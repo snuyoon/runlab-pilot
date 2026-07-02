@@ -206,6 +206,297 @@ function buildCSV(records: RecordRow[]): string {
   return lines.join("\n");
 }
 
+// ─── 주의 필요 패널 (경고 판정) ─────────────────────────────
+//
+// 기준 근거 (문헌 확인):
+//  - 응답 누락: EMA 준수율 벤치마크 80%(메타분석 평균 79%, Wrzus & Neubauer 2023).
+//    연속 미응답은 이후 미응답 확률을 높이는 조기경보 신호 → 조기 연락 관행.
+//    OSTRC 원조 운용(Clarsen 2013)은 발송 +3일에 리마인더 → 우리 주기(월요일 발송)
+//    기준 목요일부터 경고
+//  - OSTRC: 노르웨이 프로그램(Clarsen 2021 BJSM)은 심각도와 무관하게 "모든" 신규
+//    문제 보고를 의료진에 알림 → 문제 보고자는 전원 표시. substantial(Q1=④ 또는
+//    Q2/Q3 3·4번째)만 빨강(우선순위). 심각도 점수 컷오프는 문헌 근거 없어 표시용.
+//    지속 주 수(weeks reported)는 만성화 추적 지표
+//  - RPE: Foster 모노토니 >2.0 (세션시간 일정 가정 하 RPE-only 근사 타당).
+//    고강도(RPE 8~10)는 주 1~2회 권장 → 연속 3일+ 빨강/2일·주 3일+ 주황.
+//    검증된 절대 컷오프가 아닌 모니터링 플래그로 사용
+
+interface AlertReason {
+  text: string;
+  level: "red" | "amber";
+}
+
+interface Alert {
+  code: string;
+  label: string;
+  reasons: AlertReason[];
+  metric: string; // 우측 요약 수치
+  spark?: number[]; // RPE 미니 차트용 (최근 7일)
+}
+
+function redCount(a: Alert): number {
+  return a.reasons.filter((r) => r.level === "red").length;
+}
+
+function sortAlerts(list: Alert[]): Alert[] {
+  return list.sort((a, b) => redCount(b) - redCount(a) || b.reasons.length - a.reasons.length);
+}
+
+/** 응답 누락 경고 */
+function computeComplianceAlerts(
+  participants: Participant[],
+  stats: Map<string, ParticipantStats>,
+  week: string
+): Alert[] {
+  const out: Alert[] = [];
+  const today = todayStr();
+  const now = new Date();
+  const last7 = lastNDays(7);
+
+  for (const p of participants) {
+    const s = stats.get(p.code);
+    const reasons: AlertReason[] = [];
+
+    // 기록이 전혀 없는 참여자 (등록 2일 경과 후부터)
+    if (!s || (s.emas.length === 0 && s.rpes.length === 0 && s.ostrcs.length === 0)) {
+      const enrolledDays = (now.getTime() - new Date(p.created_at).getTime()) / 86400000;
+      if (enrolledDays >= 2) {
+        out.push({
+          code: p.code,
+          label: p.label,
+          reasons: [{ text: "기록 없음 — 온보딩 확인 필요", level: "red" }],
+          metric: "—",
+        });
+      }
+      continue;
+    }
+
+    if (s.missedEMADays >= 2) {
+      reasons.push({ text: `기상 설문 ${s.missedEMADays}일 연속 미응답`, level: "red" });
+    } else if (now.getHours() >= 12 && !s.emaDates.has(today)) {
+      reasons.push({ text: "오늘 기상 설문 미완료", level: "amber" });
+    }
+
+    // 최근 7일 응답률 < 80% (EMA 준수 벤치마크 미달)
+    const rate = last7.filter((d) => s.emaDates.has(d)).length / 7;
+    if (rate < 0.8 && s.emas.length > 0) {
+      reasons.push({ text: `최근 7일 응답률 ${Math.round(rate * 100)}%`, level: rate < 0.5 ? "red" : "amber" });
+    }
+
+    // 주간 OSTRC: 발송 +3일(목요일)부터 경고 — OSTRC 운용 리마인더 관행
+    if (!s.ostrcByWeek.has(week)) {
+      const dow = now.getDay(); // 0=일
+      if (dow === 0 || dow >= 6) reasons.push({ text: "이번 주 OSTRC 미완료 (주말)", level: "red" });
+      else if (dow >= 4) reasons.push({ text: "이번 주 OSTRC 미완료", level: "amber" });
+    }
+
+    if (reasons.length > 0) {
+      out.push({ code: p.code, label: p.label, reasons, metric: `${Math.round(rate * 100)}%` });
+    }
+  }
+  return sortAlerts(out);
+}
+
+/** OSTRC 건강 문제 경고 — 최근 응답(이번 주 우선, 없으면 지난주)의 문제 */
+function computeHealthAlerts(
+  participants: Participant[],
+  stats: Map<string, ParticipantStats>,
+  week: string,
+  prevWeek: string
+): Alert[] {
+  const out: Alert[] = [];
+
+  for (const p of participants) {
+    const s = stats.get(p.code);
+    if (!s) continue;
+    const res = s.ostrcByWeek.get(week) ?? s.ostrcByWeek.get(prevWeek);
+    if (!res || res.noProblem || res.problems.length === 0) continue;
+
+    // 문제 루트별 지속 주 수 (반복 보고 체인)
+    const weeksByRoot = new Map<string, Set<string>>();
+    for (const r of s.ostrcs) {
+      for (const pr of r.problems) {
+        const root = pr.recurrenceOfId ?? pr.id;
+        if (!weeksByRoot.has(root)) weeksByRoot.set(root, new Set());
+        weeksByRoot.get(root)!.add(r.weekKey);
+      }
+    }
+
+    const reasons: AlertReason[] = [];
+    let maxSeverity = 0;
+    for (const pr of res.problems) {
+      maxSeverity = Math.max(maxSeverity, pr.severityScore);
+      const chain = weeksByRoot.get(pr.recurrenceOfId ?? pr.id)?.size ?? 1;
+      const parts: string[] = [pr.label];
+      if (chain >= 2) parts.push(`${chain}주째 지속`);
+      if ((pr.timeLossDays ?? 0) >= 3) parts.push(`주 ${pr.timeLossDays}일 훈련 중단`);
+      // substantial만 빨강 — 심각도 점수 단독 컷오프는 문헌 근거 없음
+      reasons.push({
+        text: parts.join(" · "),
+        level: pr.substantial ? "red" : "amber",
+      });
+      if (pr.type === "mental") {
+        reasons.push({ text: "정신 건강 문제 보고 — 후속 확인 권장", level: "red" });
+      }
+    }
+    if (res.weekKey !== week) {
+      reasons.push({ text: "지난주 보고 (이번 주 미응답)", level: "amber" });
+    }
+
+    out.push({
+      code: p.code,
+      label: p.label,
+      reasons,
+      metric: `${maxSeverity}/100`,
+    });
+  }
+  return sortAlerts(out);
+}
+
+/** RPE 훈련 부하 경고 — 최근 7일 */
+function computeLoadAlerts(
+  participants: Participant[],
+  stats: Map<string, ParticipantStats>
+): Alert[] {
+  const out: Alert[] = [];
+  const last7 = lastNDays(7);
+
+  for (const p of participants) {
+    const s = stats.get(p.code);
+    if (!s) continue;
+    const series = last7.map((d) => s.rpeByDate.get(d)?.[0]?.rpe ?? 0);
+    const values = series.filter((v) => v > 0);
+    if (values.length === 0) continue;
+
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const reasons: AlertReason[] = [];
+
+    // 고강도(≥8) 연속일 — 회복일 부재 (세션 없는 날도 휴식으로 간주해 연속 끊음)
+    let maxStreak = 0;
+    let cur = 0;
+    for (const v of series) {
+      if (v >= 8) {
+        cur++;
+        maxStreak = Math.max(maxStreak, cur);
+      } else {
+        cur = 0;
+      }
+    }
+    if (maxStreak >= 2) {
+      reasons.push({
+        text: `고강도(RPE≥8) ${maxStreak}일 연속`,
+        level: maxStreak >= 3 ? "red" : "amber",
+      });
+    }
+
+    // 고강도 세션 빈도 — 주 1~2회 권장 초과
+    const highDays = series.filter((v) => v >= 8).length;
+    if (highDays >= 3 && maxStreak < 3) {
+      reasons.push({ text: `고강도 주 ${highDays}일 (권장 1~2일)`, level: "amber" });
+    }
+
+    // 주 평균 고부하
+    if (values.length >= 3 && mean >= 7) {
+      reasons.push({ text: `최근 7일 평균 RPE ${mean.toFixed(1)}`, level: mean >= 8 ? "red" : "amber" });
+    }
+
+    // Foster 모노토니 근사 (평균/SD ≥ 2.0, 변동 없이 계속 부하)
+    if (values.length >= 4 && mean >= 5) {
+      const sd = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
+      const monotony = sd === 0 ? 99 : mean / sd;
+      if (monotony >= 2) {
+        reasons.push({ text: `모노토니 ${monotony >= 99 ? "매우 높음" : monotony.toFixed(1)} — 강도 변화 없음`, level: "amber" });
+      }
+    }
+
+    if (reasons.length > 0) {
+      out.push({
+        code: p.code,
+        label: p.label,
+        reasons,
+        metric: `평균 ${mean.toFixed(1)}`,
+        spark: series,
+      });
+    }
+  }
+  return sortAlerts(out);
+}
+
+/** 경고 패널 UI */
+function AttentionPanel({
+  title,
+  subtitle,
+  alerts,
+  onSelect,
+}: {
+  title: string;
+  subtitle: string;
+  alerts: Alert[];
+  onSelect: (code: string) => void;
+}) {
+  return (
+    <div className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-bold text-slate-700">{title}</div>
+          <div className="text-[11px] text-slate-400">{subtitle}</div>
+        </div>
+        <span
+          className={`text-sm font-bold px-2.5 py-1 rounded-full
+            ${alerts.length > 0 ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"}`}
+        >
+          {alerts.length}
+        </span>
+      </div>
+      {alerts.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-slate-300">✅ 해당 없음</div>
+      ) : (
+        <div className="divide-y divide-slate-50 max-h-72 overflow-y-auto">
+          {alerts.map((a) => (
+            <button
+              key={a.code}
+              onClick={() => onSelect(a.code)}
+              className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-mono text-sm font-bold text-slate-700">
+                  {a.code}
+                  <span className="font-sans font-normal text-xs text-slate-400 ml-1.5">{a.label}</span>
+                </span>
+                <span className="text-xs font-bold text-slate-500 flex items-center gap-2">
+                  {a.spark && (
+                    <span className="flex items-end gap-[2px] h-5">
+                      {a.spark.map((v, i) => (
+                        <span
+                          key={i}
+                          className={`w-1.5 rounded-sm ${v >= 8 ? "bg-red-400" : v > 0 ? "bg-orange-300" : "bg-slate-100"}`}
+                          style={{ height: `${Math.max(10, v * 10)}%` }}
+                        />
+                      ))}
+                    </span>
+                  )}
+                  {a.metric}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {a.reasons.map((r, i) => (
+                  <span
+                    key={i}
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full
+                      ${r.level === "red" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-700"}`}
+                  >
+                    {r.text}
+                  </span>
+                ))}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 상세 보기 표시 유틸 ────────────────────────────────────
 
 /** 1~10 응답값 색상 (낮을수록 나쁨 기준) */
@@ -359,6 +650,15 @@ function AdminInner() {
   const week = mondayOf();
   const activeParticipants = data.participants.filter((p) => p.active);
 
+  const prevWeek = (() => {
+    const d = new Date(week + "T00:00:00");
+    d.setDate(d.getDate() - 7);
+    return todayStr(d);
+  })();
+  const complianceAlerts = computeComplianceAlerts(activeParticipants, stats, week);
+  const healthAlerts = computeHealthAlerts(activeParticipants, stats, week, prevWeek);
+  const loadAlerts = computeLoadAlerts(activeParticipants, stats);
+
   const emaToday = activeParticipants.filter((p) => stats.get(p.code)?.emaDates.has(today)).length;
   const ostrcThisWeek = activeParticipants.filter((p) => stats.get(p.code)?.ostrcByWeek.has(week));
   const weekReporters = ostrcThisWeek.filter(
@@ -476,6 +776,34 @@ function AdminInner() {
             <div className={`text-2xl font-bold ${substantialThisWeek.length > 0 ? "text-red-500" : "text-slate-800"}`}>
               {substantialThisWeek.length}건
             </div>
+          </div>
+        </div>
+
+        {/* 주의 필요 패널 */}
+        <div className="mb-6">
+          <div className="text-sm font-bold text-slate-600 mb-2.5">
+            ⚠️ 주의가 필요한 참여자
+            <span className="font-normal text-slate-400 ml-2">클릭하면 상세 기록으로 이동</span>
+          </div>
+          <div className="grid lg:grid-cols-3 gap-3">
+            <AttentionPanel
+              title="📵 응답 누락"
+              subtitle="연락(넛지)이 필요할 수 있어요"
+              alerts={complianceAlerts}
+              onSelect={setSelected}
+            />
+            <AttentionPanel
+              title="🩹 건강 문제 (OSTRC)"
+              subtitle="최근 주간 설문에서 문제 보고"
+              alerts={healthAlerts}
+              onSelect={setSelected}
+            />
+            <AttentionPanel
+              title="🔥 훈련 부하 (RPE)"
+              subtitle="최근 7일 고강도 패턴"
+              alerts={loadAlerts}
+              onSelect={setSelected}
+            />
           </div>
         </div>
 
