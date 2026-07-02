@@ -71,3 +71,40 @@ body {
   position: relative;
   overflow-x: hidden;
 }
+
+/* ── 아이폰 최적화 ── */
+
+/* 노치/다이나믹 아일랜드 및 홈 인디케이터 회피 */
+.safe-top {
+  padding-top: max(2rem, env(safe-area-inset-top));
+}
+
+.safe-bottom {
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+
+/* 탭 시 회색 하이라이트 제거 + 길게 눌러 선택/확대 방지 (앱처럼 동작) */
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+input,
+textarea {
+  user-select: auto;
+}
+
+/* 당겨서 새로고침 방지 (수면 화면에서 오작동 방지) */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+/* iOS에서 input 포커스 시 자동 확대 방지 (16px 미만 폰트가 원인) */
+input,
+select,
+textarea {
+  font-size: 16px;
+}

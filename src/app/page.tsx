@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { saveState, loadState } from "@/store/gameStore";
+import { loadData, saveSettings } from "@/store/studyStore";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,13 +16,12 @@ export default function LoginPage() {
       setTimeout(() => setShaking(false), 500);
       return;
     }
-    saveState({ participantCode: code.trim().toUpperCase() });
-    const state = loadState();
-    if (state.animal) {
-      router.push("/home");
-    } else {
-      router.push("/select");
-    }
+    const current = loadData().settings;
+    saveSettings({
+      participantCode: code.trim().toUpperCase(),
+      enrolledAt: current.enrolledAt || new Date().toISOString(),
+    });
+    router.push("/home");
   };
 
   return (

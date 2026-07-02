@@ -8,8 +8,17 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "RunLab - AI 스마트 러닝워치",
-  description: "연구 참여자 컴플라이언스 관리 앱",
+  title: "RunLab Pilot",
+  description: "AI 스마트 러닝워치 연구 — 파일럿 참여자 앱",
+  // 아이폰 홈 화면 추가 시 네이티브 앱처럼 전체 화면으로 실행
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "RunLab",
+  },
+  icons: {
+    apple: "/icon-180.png",
+  },
 };
 
 export const viewport: Viewport = {
@@ -17,6 +26,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover", // 노치/다이나믹 아일랜드 영역까지 사용 (safe-area와 함께)
+  themeColor: "#f8fafc",
 };
 
 export default function RootLayout({

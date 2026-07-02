@@ -1,214 +1,199 @@
 "use client";
 
+/**
+ * /dashboard — 내 기록 + 데이터 내보내기
+ *
+ * 파일럿 단계에서는 데이터가 참여자 기기(localStorage)에만 저장되므로,
+ * 참여 종료 시(또는 주기적으로) 이 화면에서 JSON을 내보내 연구자에게 전달한다.
+ * 아이폰에서는 '공유하기'(Web Share)로 카톡/메일/에어드랍 전송 가능.
+ */
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-
-const participants = [
-  { code: "SNU-001", animal: "🐶", level: 7, compliance: 95, emaRate: 92, streak: 12, status: "active" },
-  { code: "SNU-002", animal: "🐱", level: 5, compliance: 78, emaRate: 85, streak: 5, status: "active" },
-  { code: "SNU-003", animal: "🦊", level: 8, compliance: 98, emaRate: 96, streak: 21, status: "active" },
-  { code: "SNU-004", animal: "🐰", level: 3, compliance: 45, emaRate: 40, streak: 0, status: "warning" },
-  { code: "SNU-005", animal: "🐻", level: 6, compliance: 88, emaRate: 90, streak: 8, status: "active" },
-  { code: "SNU-006", animal: "🐶", level: 9, compliance: 100, emaRate: 100, streak: 30, status: "active" },
-  { code: "SNU-007", animal: "🐱", level: 2, compliance: 30, emaRate: 25, streak: 0, status: "danger" },
-  { code: "SNU-008", animal: "🦊", level: 4, compliance: 65, emaRate: 70, streak: 3, status: "active" },
-  { code: "SNU-009", animal: "🐰", level: 6, compliance: 82, emaRate: 88, streak: 7, status: "active" },
-  { code: "SNU-010", animal: "🐻", level: 1, compliance: 20, emaRate: 15, streak: 0, status: "danger" },
-];
-
-const stats = {
-  total: 160,
-  active: 148,
-  avgCompliance: 72,
-  avgEMA: 68,
-  atRisk: 12,
-};
-
-function ComplianceBar({ value }: { value: number }) {
-  const color =
-    value >= 80 ? "bg-emerald-500" : value >= 50 ? "bg-amber-500" : "bg-red-500";
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-20 h-2 bg-slate-100 rounded-full overflow-hidden">
-        <motion.div
-          className={`h-full rounded-full ${color}`}
-          initial={{ width: 0 }}
-          animate={{ width: `${value}%` }}
-          transition={{ duration: 0.8 }}
-        />
-      </div>
-      <span className="text-xs font-mono text-slate-600">{value}%</span>
-    </div>
-  );
-}
+import { loadData, exportJSON, exportCSV, resetAll } from "@/store/studyStore";
+import { useMounted } from "@/hooks/useMounted";
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [filter, setFilter] = useState<"all" | "warning" | "danger">("all");
+  const mounted = useMounted();
+  if (!mounted) return <div className="mobile-frame" />;
+  return <DashboardInner />;
+}
 
-  const filtered = participants.filter(
-    (p) => filter === "all" || p.status === filter || (filter === "warning" && p.status === "danger")
-  );
+function DashboardInner() {
+  const router = useRouter();
+  const [data] = useState(() => loadData());
+  const [toast, setToast] = useState("");
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2000);
+  };
+
+  const download = (content: string, filename: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const code = data.settings.participantCode || "UNKNOWN";
+
+  const handleShare = async () => {
+    const json = exportJSON();
+    const file = new File([json], `runlab-${code}.json`, { type: "application/json" });
+    const nav = navigator as Navigator & {
+      canShare?: (d: { files: File[] }) => boolean;
+    };
+    try {
+      if (nav.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `RunLab 데이터 (${code})` });
+        return;
+      }
+    } catch {
+      return; // 사용자가 공유 취소
+    }
+    // 공유 미지원 → 클립보드 복사
+    try {
+      await navigator.clipboard.writeText(json);
+      showToast("클립보드에 복사되었습니다");
+    } catch {
+      download(json, `runlab-${code}.json`, "application/json");
+    }
+  };
+
+  const handleReset = () => {
+    if (confirm("모든 기록이 삭제됩니다. 정말 초기화할까요?\n(테스트용 기능입니다)")) {
+      resetAll();
+      router.replace("/");
+    }
+  };
+
+  const stats = [
+    { label: "기상 설문", value: `${data.wakeEMAs.length}회`, emoji: "☀️" },
+    { label: "러닝 세션", value: `${data.sessionRPEs.length}회`, emoji: "🏃" },
+    { label: "주간 설문", value: `${data.ostrcResponses.length}주`, emoji: "📋" },
+    { label: "수면 기록", value: `${data.sleepLogs.length}회`, emoji: "🌙" },
+  ];
+
+  const recentRPE = [...data.sessionRPEs].reverse().slice(0, 5);
+  const recentOSTRC = [...data.ostrcResponses].reverse().slice(0, 4);
 
   return (
-    <div className="mobile-frame flex flex-col bg-slate-50 pb-6">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-5 pt-5 pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">관리자 대시보드</h1>
-            <p className="text-xs text-slate-500">RunLab 연구 모니터링</p>
-          </div>
-          <motion.button
-            onClick={() => router.push("/home")}
-            className="text-xs px-3 py-1.5 bg-slate-100 rounded-full text-slate-600"
-            whileTap={{ scale: 0.95 }}
-          >
-            ← 앱으로
-          </motion.button>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-3 gap-2 mt-4">
-          {[
-            { label: "전체 참여자", value: stats.total, icon: "👥" },
-            { label: "평균 착용률", value: `${stats.avgCompliance}%`, icon: "⌚" },
-            { label: "위험 참여자", value: stats.atRisk, icon: "⚠️" },
-          ].map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="bg-slate-50 rounded-xl p-3 text-center"
-            >
-              <div className="text-lg">{stat.icon}</div>
-              <div className="text-lg font-bold text-slate-800">{stat.value}</div>
-              <div className="text-[10px] text-slate-500">{stat.label}</div>
-            </motion.div>
-          ))}
+    <div className="mobile-frame flex flex-col bg-slate-50 px-5 pt-8 pb-10 safe-top safe-bottom">
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={() => router.push("/home")} className="text-slate-400 text-xl px-1">
+          ←
+        </button>
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">내 기록</h1>
+          <p className="text-xs text-slate-400">{code}</p>
         </div>
       </div>
 
-      {/* Weekly Chart (Simple Bar) */}
-      <div className="mx-5 mt-4 bg-white rounded-2xl p-4 shadow-sm">
-        <div className="text-sm font-semibold text-slate-700 mb-3">
-          주간 착용률 추이
-        </div>
-        <div className="flex items-end gap-2 h-24">
-          {[65, 72, 68, 75, 70, 78, 72].map((val, i) => (
-            <motion.div
-              key={i}
-              className="flex-1 flex flex-col items-center gap-1"
-              initial={{ height: 0 }}
-              animate={{ height: "auto" }}
-            >
-              <motion.div
-                className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500 to-emerald-400"
-                initial={{ height: 0 }}
-                animate={{ height: `${val}%` }}
-                transition={{ delay: 0.3 + i * 0.05, duration: 0.5 }}
-                style={{ minHeight: 4 }}
-              />
-              <span className="text-[10px] text-slate-400">
-                {["월", "화", "수", "목", "금", "토", "일"][i]}
-              </span>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Filter */}
-      <div className="mx-5 mt-4 flex gap-2">
-        {[
-          { key: "all", label: "전체" },
-          { key: "warning", label: "⚠️ 위험" },
-        ].map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key as typeof filter)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all
-              ${
-                filter === f.key
-                  ? "bg-slate-800 text-white"
-                  : "bg-white text-slate-600 border border-slate-200"
-              }`}
+      {/* 요약 */}
+      <div className="grid grid-cols-2 gap-2.5 mb-6">
+        {stats.map((s, i) => (
+          <motion.div
+            key={s.label}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05 }}
+            className="bg-white rounded-2xl p-4 shadow-sm"
           >
-            {f.label}
-          </button>
+            <div className="text-2xl mb-1">{s.emoji}</div>
+            <div className="text-lg font-bold text-slate-800">{s.value}</div>
+            <div className="text-xs text-slate-400">{s.label}</div>
+          </motion.div>
         ))}
       </div>
 
-      {/* Participant Table */}
-      <div className="mx-5 mt-3 bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs">
-                <th className="text-left py-2.5 px-3 font-medium">참여자</th>
-                <th className="text-left py-2.5 px-2 font-medium">착용률</th>
-                <th className="text-left py-2.5 px-2 font-medium">EMA</th>
-                <th className="text-right py-2.5 px-3 font-medium">연속</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p, i) => (
-                <motion.tr
-                  key={p.code}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: i * 0.03 }}
-                  className={`border-t border-slate-100 ${
-                    p.status === "danger"
-                      ? "bg-red-50"
-                      : p.status === "warning"
-                      ? "bg-amber-50"
-                      : ""
-                  }`}
-                >
-                  <td className="py-2.5 px-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{p.animal}</span>
-                      <div>
-                        <div className="font-medium text-slate-800 text-xs">
-                          {p.code}
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          Lv.{p.level}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-2.5 px-2">
-                    <ComplianceBar value={p.compliance} />
-                  </td>
-                  <td className="py-2.5 px-2">
-                    <ComplianceBar value={p.emaRate} />
-                  </td>
-                  <td className="py-2.5 px-3 text-right">
-                    <span
-                      className={`text-xs font-mono ${
-                        p.streak > 0 ? "text-emerald-600" : "text-red-500"
-                      }`}
-                    >
-                      {p.streak > 0 ? `🔥${p.streak}일` : "중단"}
-                    </span>
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
+      {/* 최근 러닝 세션 */}
+      {recentRPE.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
+          <div className="text-sm font-bold text-slate-600 mb-3">최근 러닝 세션</div>
+          <div className="flex flex-col gap-2">
+            {recentRPE.map((s) => (
+              <div key={s.id} className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">{s.date}</span>
+                <span className="text-slate-400 text-xs flex-1 text-center">
+                  {s.durationMin ? `${s.durationMin}분` : ""}
+                </span>
+                <span className="font-bold text-orange-500">RPE {s.rpe}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 최근 주간 설문 */}
+      {recentOSTRC.length > 0 && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm mb-6">
+          <div className="text-sm font-bold text-slate-600 mb-3">주간 건강 설문 (OSTRC)</div>
+          <div className="flex flex-col gap-2">
+            {recentOSTRC.map((r) => (
+              <div key={r.id} className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">{r.weekKey} 주</span>
+                {r.noProblem ? (
+                  <span className="text-emerald-500 font-semibold text-xs">문제 없음</span>
+                ) : (
+                  <span className="text-slate-600 text-xs">
+                    문제 {r.problems.length}건 · 최고 심각도{" "}
+                    <strong className="text-red-400">
+                      {Math.max(...r.problems.map((p) => p.severityScore), 0)}
+                    </strong>
+                    /100
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1" />
+
+      {/* 내보내기 */}
+      <div className="text-sm font-bold text-slate-600 mb-2.5">데이터 내보내기</div>
+      <div className="flex flex-col gap-2 mb-6">
+        <button
+          onClick={handleShare}
+          className="w-full py-3.5 rounded-2xl font-semibold text-white
+            bg-gradient-to-r from-indigo-500 to-purple-500 shadow-lg shadow-indigo-200"
+        >
+          📤 연구자에게 데이터 보내기 (JSON)
+        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => download(exportJSON(), `runlab-${code}.json`, "application/json")}
+            className="flex-1 py-3 rounded-2xl text-sm font-semibold text-slate-600 bg-white border-2 border-slate-200"
+          >
+            JSON 저장
+          </button>
+          <button
+            onClick={() => download(exportCSV(), `runlab-${code}.csv`, "text/csv")}
+            className="flex-1 py-3 rounded-2xl text-sm font-semibold text-slate-600 bg-white border-2 border-slate-200"
+          >
+            CSV 저장
+          </button>
         </div>
       </div>
 
-      {/* Export Demo Button */}
-      <motion.button
-        className="mx-5 mt-4 py-3 rounded-2xl border-2 border-dashed border-slate-300 text-sm text-slate-500"
-        whileTap={{ scale: 0.98 }}
-      >
-        📊 CSV 데이터 내보내기 (향후 구현)
-      </motion.button>
+      {/* 초기화 (테스트용) */}
+      <button onClick={handleReset} className="text-center text-xs text-red-300 py-2">
+        전체 초기화 (테스트용)
+      </button>
+
+      {/* 토스트 */}
+      {toast && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-full z-50">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

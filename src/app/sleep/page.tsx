@@ -1,80 +1,183 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+/**
+ * /sleep — 취침 → 수면 → 알람 → 해제 → 기상 EMA 자동 진입
+ *
+ * 웹앱 제약상 알람은 이 페이지가 열려 있는 동안 동작한다.
+ * (아이폰: 충전기에 연결 + 화면 켜둔 채로 머리맡에 두는 것을 안내)
+ *  - Wake Lock API로 화면 꺼짐 방지 (iOS 16.4+ 지원)
+ *  - 알람음은 WebAudio로 생성 — 취침 버튼(사용자 제스처)에서 AudioContext를 미리 연다
+ *  - 설정된 기상 시각이 되면 자동으로 알람 페이즈 진입
+ */
+
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { loadState, saveState, ANIMALS, getStage } from "@/store/gameStore";
+import { motion } from "framer-motion";
+import { loadData, startSleepLog, finishSleepLog } from "@/store/studyStore";
+import { useMounted } from "@/hooks/useMounted";
 
 type Phase = "bedtime" | "sleeping" | "alarm" | "dismiss";
 
 export default function SleepPage() {
+  const mounted = useMounted();
+  // 알람 시각 등 저장값은 클라이언트에서만 읽는다 (hydration mismatch 방지)
+  if (!mounted) return <div className="mobile-frame bg-slate-900" />;
+  return <SleepInner />;
+}
+
+function SleepInner() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("bedtime");
-  const [state, setState] = useState(loadState());
+  const [settings] = useState(() => loadData().settings);
   const [currentTime, setCurrentTime] = useState("");
-  const [alarmPulse, setAlarmPulse] = useState(false);
   const [slideX, setSlideX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  const animal = state.animal ? ANIMALS[state.animal] : null;
-  const stage = state.animal ? getStage(state.level) : "egg";
-  const alarmTime = `${String(state.alarmHour).padStart(2, "0")}:${String(state.alarmMinute).padStart(2, "0")}`;
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const alarmIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
+  const sleepLogIdRef = useRef<string | null>(null);
+  const alarmFiredRef = useRef(false);
+  const phaseRef = useRef<Phase>("bedtime");
+  phaseRef.current = phase;
 
+  const alarmTime = `${String(settings.alarmHour).padStart(2, "0")}:${String(settings.alarmMinute).padStart(2, "0")}`;
+
+  // ── 시계 + 알람 시각 감시 ──
   useEffect(() => {
     const tick = () => {
       const now = new Date();
       setCurrentTime(
         `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
       );
+      if (
+        phaseRef.current === "sleeping" &&
+        !alarmFiredRef.current &&
+        now.getHours() === settings.alarmHour &&
+        now.getMinutes() === settings.alarmMinute
+      ) {
+        alarmFiredRef.current = true;
+        triggerAlarm();
+      }
     };
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.alarmHour, settings.alarmMinute]);
+
+  // ── 알람음 (WebAudio 비프음 루프) ──
+  const beep = useCallback(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    // 삐-삐-삐 3연타 패턴
+    for (let i = 0; i < 3; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0, now + i * 0.25);
+      gain.gain.linearRampToValueAtTime(0.5, now + i * 0.25 + 0.02);
+      gain.gain.linearRampToValueAtTime(0, now + i * 0.25 + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + i * 0.25);
+      osc.stop(now + i * 0.25 + 0.2);
+    }
   }, []);
 
+  const startAlarmSound = useCallback(() => {
+    audioCtxRef.current?.resume();
+    beep();
+    alarmIntervalRef.current = setInterval(() => {
+      beep();
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+        navigator.vibrate?.([200, 100, 200]);
+      }
+    }, 1200);
+  }, [beep]);
+
+  const stopAlarmSound = useCallback(() => {
+    if (alarmIntervalRef.current) {
+      clearInterval(alarmIntervalRef.current);
+      alarmIntervalRef.current = null;
+    }
+  }, []);
+
+  // ── 페이즈 전환 ──
   const startSleep = useCallback(() => {
-    saveState({ isSleeping: true, todayWatchWorn: true });
+    // 사용자 제스처 안에서 AudioContext 준비 (iOS 사운드 정책)
+    // 주의: resume()을 await하면 정책에 막혔을 때 프로미스가 안 풀려
+    // 버튼이 먹통이 되므로 화면 전환을 막지 않게 fire-and-forget으로 처리
+    try {
+      type AudioCtxCtor = typeof AudioContext;
+      const Ctor: AudioCtxCtor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext: AudioCtxCtor }).webkitAudioContext;
+      audioCtxRef.current = audioCtxRef.current ?? new Ctor();
+      audioCtxRef.current.resume().catch(() => {});
+    } catch {}
+    // 화면 꺼짐 방지
+    try {
+      const nav = navigator as Navigator & {
+        wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
+      };
+      nav.wakeLock
+        ?.request("screen")
+        .then((lock) => {
+          wakeLockRef.current = lock;
+        })
+        .catch(() => {});
+    } catch {}
+    sleepLogIdRef.current = startSleepLog();
+    alarmFiredRef.current = false;
     setPhase("sleeping");
   }, []);
 
   const triggerAlarm = useCallback(() => {
     setPhase("alarm");
-    setAlarmPulse(true);
-  }, []);
+    startAlarmSound();
+  }, [startAlarmSound]);
 
   const dismissAlarm = useCallback(() => {
+    stopAlarmSound();
+    wakeLockRef.current?.release().catch(() => {});
+    if (sleepLogIdRef.current) finishSleepLog(sleepLogIdRef.current);
     setPhase("dismiss");
-    saveState({ isSleeping: false });
     setTimeout(() => router.push("/ema"), 1200);
-  }, [router]);
+  }, [router, stopAlarmSound]);
 
-  // Slide to dismiss handler
+  // 페이지 이탈 시 정리
+  useEffect(() => {
+    return () => {
+      stopAlarmSound();
+      wakeLockRef.current?.release().catch(() => {});
+    };
+  }, [stopAlarmSound]);
+
   const handleSlideEnd = useCallback(() => {
-    if (slideX > 200) {
-      dismissAlarm();
-    }
+    if (slideX > 200) dismissAlarm();
     setSlideX(0);
     setIsDragging(false);
   }, [slideX, dismissAlarm]);
 
   return (
     <div className="mobile-frame flex flex-col">
-      <AnimatePresence mode="wait">
-        {/* ===== Phase 1: Bedtime — 취침 시작 버튼 ===== */}
+      {/* 페이즈 전환은 exit 없이 entrance만 — 백그라운드 탭에서 rAF가 멈춰도 다음 페이즈가 즉시 마운트되도록 */}
+        {/* ===== 1. 취침 준비 ===== */}
         {phase === "bedtime" && (
           <motion.div
             key="bedtime"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center justify-center flex-1 px-8
-              bg-gradient-to-b from-indigo-900 to-slate-900 text-white"
+            className="flex flex-col items-center justify-center flex-1 px-8 py-10
+              bg-gradient-to-b from-indigo-900 to-slate-900 text-white safe-top safe-bottom"
           >
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="text-center"
+              className="text-center w-full"
             >
               <div className="text-6xl mb-4">🌙</div>
               <h1 className="text-2xl font-bold mb-2">취침 준비</h1>
@@ -82,48 +185,40 @@ export default function SleepPage() {
                 워치를 착용하고 아래 버튼을 눌러주세요
               </p>
 
-              {/* Watch Reminder */}
-              <motion.div
-                animate={{ y: [0, -5, 0] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="bg-white/10 rounded-2xl p-4 mb-6 backdrop-blur"
-              >
+              <div className="bg-white/10 rounded-2xl p-4 mb-3 backdrop-blur">
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">⌚</span>
                   <div className="text-left">
                     <div className="font-semibold text-sm">수면 워치 착용</div>
-                    <div className="text-xs text-indigo-300">
-                      손목에 워치를 차고 주무세요
-                    </div>
+                    <div className="text-xs text-indigo-300">손목에 워치를 차고 주무세요</div>
                   </div>
-                  <span className="text-emerald-400 text-xl ml-auto">✓</span>
                 </div>
-              </motion.div>
+              </div>
 
-              {/* Alarm Info */}
-              <div className="bg-white/10 rounded-2xl p-4 mb-8 backdrop-blur">
+              <div className="bg-white/10 rounded-2xl p-4 mb-3 backdrop-blur">
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">⏰</span>
                   <div className="text-left">
-                    <div className="font-semibold text-sm">기상 알람</div>
+                    <div className="font-semibold text-sm">기상 알람 {alarmTime}</div>
                     <div className="text-xs text-indigo-300">
-                      내일 아침 {alarmTime}에 알람이 울려요
+                      알람이 울리면 밀어서 끄고, 바로 설문이 열려요
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Character */}
-              {animal && (
-                <motion.div
-                  className="text-6xl mb-6"
-                  animate={{ rotate: [0, -5, 5, 0] }}
-                  transition={{ duration: 3, repeat: Infinity }}
-                >
-                  {animal.emoji[stage]}
-                  <span className="text-3xl ml-1">💤</span>
-                </motion.div>
-              )}
+              <div className="bg-amber-400/15 border border-amber-300/30 rounded-2xl p-4 mb-8">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">🔌</span>
+                  <div className="text-left">
+                    <div className="font-semibold text-sm text-amber-200">중요</div>
+                    <div className="text-xs text-amber-200/80 leading-relaxed">
+                      충전기에 연결하고, 이 화면을 켜 둔 채로 머리맡에 두세요.
+                      화면이 꺼지면 알람이 울리지 않아요.
+                    </div>
+                  </div>
+                </div>
+              </div>
             </motion.div>
 
             <motion.button
@@ -138,20 +233,19 @@ export default function SleepPage() {
 
             <button
               onClick={() => router.push("/home")}
-              className="text-indigo-400 text-sm mt-4"
+              className="text-indigo-400 text-sm mt-4 py-2"
             >
               돌아가기
             </button>
           </motion.div>
         )}
 
-        {/* ===== Phase 2: Sleeping — 수면 중 (어두운 화면) ===== */}
+        {/* ===== 2. 수면 중 ===== */}
         {phase === "sleeping" && (
           <motion.div
             key="sleeping"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
             className="flex flex-col items-center justify-center flex-1 px-8 bg-slate-950 text-white"
           >
             <motion.div
@@ -160,27 +254,14 @@ export default function SleepPage() {
               transition={{ delay: 0.5 }}
               className="text-center"
             >
-              {/* Dim clock */}
               <motion.div
-                className="text-6xl font-light text-white/20 tabular-nums mb-4"
+                className="text-6xl font-light text-white/20 tabular-nums mb-6"
                 animate={{ opacity: [0.15, 0.25, 0.15] }}
                 transition={{ duration: 4, repeat: Infinity }}
               >
                 {currentTime}
               </motion.div>
 
-              {/* Sleeping character */}
-              {animal && (
-                <motion.div
-                  className="text-7xl mb-4"
-                  animate={{ y: [0, -3, 0], scale: [1, 1.02, 1] }}
-                  transition={{ duration: 3, repeat: Infinity }}
-                >
-                  {animal.emoji[stage]}
-                </motion.div>
-              )}
-
-              {/* Zzz animation */}
               <div className="relative h-12 mb-6">
                 {["💤", "💤", "💤"].map((z, i) => (
                   <motion.span
@@ -193,11 +274,7 @@ export default function SleepPage() {
                       opacity: [0, 0.6, 0],
                       scale: [0.6, 1, 0.8],
                     }}
-                    transition={{
-                      duration: 3,
-                      repeat: Infinity,
-                      delay: i * 1,
-                    }}
+                    transition={{ duration: 3, repeat: Infinity, delay: i * 1 }}
                   >
                     {z}
                   </motion.span>
@@ -205,36 +282,35 @@ export default function SleepPage() {
               </div>
 
               <p className="text-white/30 text-sm mb-2">수면 중...</p>
-              <p className="text-white/20 text-xs">
-                알람: {alarmTime}
-              </p>
+              <p className="text-white/20 text-xs">알람: {alarmTime}</p>
             </motion.div>
 
-            {/* Demo: Skip to alarm button */}
+            {/* 파일럿 테스트용: 즉시 알람 */}
             <motion.button
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 2 }}
-              onClick={triggerAlarm}
+              onClick={() => {
+                alarmFiredRef.current = true;
+                triggerAlarm();
+              }}
               className="mt-12 px-6 py-3 rounded-full text-sm
                 bg-white/10 text-white/50 border border-white/10"
               whileTap={{ scale: 0.95 }}
             >
-              ⏩ 시연: 알람 울리기
+              ⏩ 테스트: 알람 울리기
             </motion.button>
           </motion.div>
         )}
 
-        {/* ===== Phase 3: Alarm Ringing ===== */}
+        {/* ===== 3. 알람 ===== */}
         {phase === "alarm" && (
           <motion.div
             key="alarm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
             className="flex flex-col items-center justify-center flex-1 px-8 bg-slate-950 text-white"
           >
-            {/* Pulsing background */}
             <motion.div
               className="absolute inset-0"
               animate={{
@@ -247,39 +323,24 @@ export default function SleepPage() {
               transition={{ duration: 0.8, repeat: Infinity }}
             />
 
-            {/* Alarm time */}
             <motion.div
               className="text-7xl font-bold text-white tabular-nums mb-4 z-10"
               animate={{ scale: [1, 1.05, 1] }}
               transition={{ duration: 0.8, repeat: Infinity }}
             >
-              {alarmTime}
+              {currentTime}
             </motion.div>
 
-            {/* Ringing bell */}
             <motion.div
-              className="text-8xl mb-2 z-10"
+              className="text-8xl mb-8 z-10"
               animate={{ rotate: [0, 15, -15, 15, -15, 0] }}
               transition={{ duration: 0.5, repeat: Infinity }}
             >
               🔔
             </motion.div>
 
-            {/* Character waking */}
-            {animal && (
-              <motion.div
-                className="text-5xl mb-8 z-10"
-                animate={{ x: [0, -5, 5, -5, 5, 0] }}
-                transition={{ duration: 0.4, repeat: Infinity }}
-              >
-                {animal.emoji[stage]} 😵
-              </motion.div>
-            )}
-
-            {/* Slide to dismiss */}
             <div className="w-full max-w-xs relative z-10">
               <div className="bg-white/10 rounded-full h-16 relative overflow-hidden backdrop-blur">
-                {/* Track label */}
                 <motion.div
                   className="absolute inset-0 flex items-center justify-center text-white/30 text-sm"
                   animate={{ opacity: [0.3, 0.6, 0.3] }}
@@ -288,11 +349,9 @@ export default function SleepPage() {
                   밀어서 알람 끄기 →
                 </motion.div>
 
-                {/* Slide handle */}
                 <motion.div
                   className="absolute left-1 top-1 w-14 h-14 bg-white rounded-full
-                    flex items-center justify-center text-2xl cursor-grab active:cursor-grabbing
-                    shadow-lg"
+                    flex items-center justify-center text-2xl cursor-grab active:cursor-grabbing shadow-lg"
                   drag="x"
                   dragConstraints={{ left: 0, right: 260 }}
                   dragElastic={0.1}
@@ -310,25 +369,13 @@ export default function SleepPage() {
               </div>
             </div>
 
-            {/* Vibration bars visual */}
-            <div className="flex gap-1 mt-6 z-10">
-              {[...Array(5)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="w-1 bg-red-400 rounded-full"
-                  animate={{ height: [8, 24, 8] }}
-                  transition={{
-                    duration: 0.4,
-                    repeat: Infinity,
-                    delay: i * 0.08,
-                  }}
-                />
-              ))}
-            </div>
+            <p className="text-white/30 text-xs mt-6 z-10">
+              알람을 끄면 바로 기상 설문이 시작됩니다
+            </p>
           </motion.div>
         )}
 
-        {/* ===== Phase 4: Dismissed — EMA 전환 ===== */}
+        {/* ===== 4. 해제 → EMA 전환 ===== */}
         {phase === "dismiss" && (
           <motion.div
             key="dismiss"
@@ -344,21 +391,8 @@ export default function SleepPage() {
               className="text-center"
             >
               <div className="text-7xl mb-4">☀️</div>
-              <h2 className="text-2xl font-bold text-slate-800 mb-2">
-                좋은 아침이에요!
-              </h2>
-              {animal && (
-                <motion.div
-                  className="text-5xl my-4"
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 0.6, repeat: 2 }}
-                >
-                  {animal.emoji[stage]} 👋
-                </motion.div>
-              )}
-              <p className="text-slate-500 text-sm">
-                간단한 설문을 시작할게요...
-              </p>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">좋은 아침이에요!</h2>
+              <p className="text-slate-500 text-sm">간단한 설문을 시작할게요...</p>
               <motion.div
                 className="mt-6 flex justify-center gap-1"
                 initial={{ opacity: 0 }}
@@ -377,7 +411,6 @@ export default function SleepPage() {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

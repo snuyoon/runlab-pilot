@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { loadState, saveState } from "@/store/gameStore";
+import { loadData, saveSettings } from "@/store/studyStore";
+import { useMounted } from "@/hooks/useMounted";
 
 function TimeWheel({
   label,
@@ -48,23 +49,22 @@ function TimeWheel({
 }
 
 export default function AlarmPage() {
+  const mounted = useMounted();
+  if (!mounted) return <div className="mobile-frame" />;
+  return <AlarmInner />;
+}
+
+function AlarmInner() {
   const router = useRouter();
-  const [alarmH, setAlarmH] = useState(7);
-  const [alarmM, setAlarmM] = useState(0);
-  const [bedH, setBedH] = useState(23);
-  const [bedM, setBedM] = useState(0);
+  const [settings] = useState(() => loadData().settings);
+  const [alarmH, setAlarmH] = useState(settings.alarmHour);
+  const [alarmM, setAlarmM] = useState(settings.alarmMinute);
+  const [bedH, setBedH] = useState(settings.bedtimeHour);
+  const [bedM, setBedM] = useState(settings.bedtimeMinute);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    const s = loadState();
-    setAlarmH(s.alarmHour);
-    setAlarmM(s.alarmMinute);
-    setBedH(s.bedtimeHour);
-    setBedM(s.bedtimeMinute);
-  }, []);
-
   const handleSave = () => {
-    saveState({
+    saveSettings({
       alarmHour: alarmH,
       alarmMinute: alarmM,
       bedtimeHour: bedH,
