@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   loadData,
   flushOutbox,
+  applyRemoteReset,
   isWakeEMADue,
   isOSTRCDue,
   isMonday,
@@ -55,6 +56,29 @@ function HomeInner() {
     const onOnline = () => void flushOutbox();
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
+  }, []);
+
+  // 관리자 원격 초기화 확인: 서버 reset_at이 갱신됐으면 로컬 기록을 비우고 새로 시작
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const s = loadData().settings;
+        if (!s.participantCode) return;
+        const res = await fetch("/api/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: s.participantCode }),
+        });
+        const json = await res.json();
+        if (json.valid && typeof json.resetAt === "string" && json.resetAt !== s.lastResetAck) {
+          applyRemoteReset(json.resetAt);
+          window.location.reload();
+        }
+      } catch {
+        // 오프라인 등 — 다음 진입 때 다시 확인
+      }
+    };
+    void check();
   }, []);
 
   if (!loggedIn) {

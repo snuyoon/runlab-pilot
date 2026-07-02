@@ -389,6 +389,22 @@ function AdminInner() {
     void fetchData(key);
   };
 
+  const resetParticipant = async (code: string) => {
+    if (
+      !confirm(
+        `${code} 참여자를 초기화할까요?\n\n· 서버에 저장된 이 참여자의 응답이 모두 삭제됩니다\n· 참여자가 다음에 앱을 열면 기기의 기록도 자동 초기화됩니다 (로그인·알람 설정은 유지)`
+      )
+    )
+      return;
+    await fetch("/api/admin/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-key": key },
+      body: JSON.stringify({ code }),
+    });
+    setSelected(null);
+    void fetchData(key);
+  };
+
   const downloadCSV = () => {
     const blob = new Blob(["﻿" + buildCSV(data.records)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -796,9 +812,22 @@ function AdminInner() {
                 <span className="font-mono font-semibold">{p.code}</span>
                 {p.label && <span className="text-slate-400">{p.label}</span>}
                 {p.active && (
-                  <button onClick={() => deactivate(p.code)} className="text-red-300 hover:text-red-500 ml-0.5">
-                    ✕
-                  </button>
+                  <>
+                    <button
+                      onClick={() => resetParticipant(p.code)}
+                      title="기록 초기화 (서버 + 기기)"
+                      className="text-slate-300 hover:text-indigo-500 ml-0.5"
+                    >
+                      ↺
+                    </button>
+                    <button
+                      onClick={() => deactivate(p.code)}
+                      title="비활성화"
+                      className="text-red-300 hover:text-red-500"
+                    >
+                      ✕
+                    </button>
+                  </>
                 )}
               </span>
             ))}

@@ -16,6 +16,7 @@ export interface StudySettings {
   participantCode: string; // 연구 참여 코드 (예: SNU-01-8XKQ)
   participantLabel: string; // 서버에 등록된 참여자 라벨 (오입력 확인용)
   enrolledAt: string; // 최초 로그인 시각 (ISO)
+  lastResetAck: string; // 마지막으로 반영한 서버 원격 초기화 시각 (reset_at)
   alarmHour: number;
   alarmMinute: number;
   bedtimeHour: number;
@@ -120,6 +121,7 @@ const defaultData: StudyData = {
     participantCode: "",
     participantLabel: "",
     enrolledAt: "",
+    lastResetAck: "",
     alarmHour: 7,
     alarmMinute: 0,
     bedtimeHour: 23,
@@ -164,6 +166,21 @@ export function resetAll() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("runlab-ostrc-draft-v1"); // OSTRC 작성 중 초안도 함께 삭제
+}
+
+/**
+ * 관리자 원격 초기화 반영: 응답 기록만 비우고 로그인/알람 설정은 유지.
+ * lastResetAck를 갱신해 같은 초기화가 반복 적용되지 않게 한다.
+ */
+export function applyRemoteReset(resetAt: string) {
+  if (typeof window === "undefined") return;
+  const current = loadData();
+  const fresh: StudyData = {
+    ...defaultData,
+    settings: { ...current.settings, lastResetAck: resetAt },
+  };
+  persist(fresh);
+  localStorage.removeItem("runlab-ostrc-draft-v1");
 }
 
 export function makeId(): string {
