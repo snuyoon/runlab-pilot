@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   loadData,
+  flushOutbox,
   isWakeEMADue,
   isOSTRCDue,
   isMonday,
@@ -47,6 +48,14 @@ function HomeInner() {
   useEffect(() => {
     if (!loggedIn) router.replace("/");
   }, [loggedIn, router]);
+
+  // 미전송 응답을 서버로 전송 (앱 진입 시 + 네트워크 복구 시)
+  useEffect(() => {
+    void flushOutbox();
+    const onOnline = () => void flushOutbox();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, []);
 
   if (!loggedIn) {
     return <div className="mobile-frame" />;

@@ -28,7 +28,6 @@ const RPE_LEVELS: { value: number; label: string; color: string }[] = [
 export default function RPEPage() {
   const router = useRouter();
   const [rpe, setRpe] = useState<number | null>(null);
-  const [duration, setDuration] = useState("");
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -36,11 +35,9 @@ export default function RPEPage() {
 
   const handleSubmit = () => {
     if (rpe === null) return;
-    const durationMin = duration.trim() ? Number(duration) : null;
     addSessionRPE({
       date: todayStr(),
       rpe,
-      durationMin: durationMin !== null && !Number.isNaN(durationMin) ? durationMin : null,
       note: note.trim(),
     });
     setSubmitted(true);
@@ -116,21 +113,6 @@ export default function RPEPage() {
             </div>
 
             {/* 선택 입력 */}
-            <div className="bg-white rounded-2xl p-4 mb-3">
-              <label className="text-xs font-semibold text-slate-500 block mb-2">
-                러닝 시간 (분) <span className="font-normal text-slate-400">— 선택</span>
-              </label>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                placeholder="예: 45"
-                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 text-base
-                  focus:border-orange-400 focus:outline-none"
-              />
-            </div>
-
             <div className="bg-white rounded-2xl p-4">
               <label className="text-xs font-semibold text-slate-500 block mb-2">
                 메모 <span className="font-normal text-slate-400">— 선택</span>

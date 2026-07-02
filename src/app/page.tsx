@@ -9,19 +9,46 @@ export default function LoginPage() {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [shaking, setShaking] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = () => {
-    if (code.trim().length < 2) {
-      setShaking(true);
-      setTimeout(() => setShaking(false), 500);
+  const fail = (msg: string) => {
+    setError(msg);
+    setShaking(true);
+    setTimeout(() => setShaking(false), 500);
+  };
+
+  // 사전 등록된 코드만 통과 (서버 검증) — 쓰레기 데이터 방지
+  const handleLogin = async () => {
+    const normalized = code.trim().toUpperCase();
+    if (normalized.length < 2 || checking) {
+      if (normalized.length < 2) fail("참여 코드를 입력해주세요");
       return;
     }
-    const current = loadData().settings;
-    saveSettings({
-      participantCode: code.trim().toUpperCase(),
-      enrolledAt: current.enrolledAt || new Date().toISOString(),
-    });
-    router.push("/home");
+    setChecking(true);
+    setError("");
+    try {
+      const res = await fetch("/api/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: normalized }),
+      });
+      const json = await res.json();
+      if (!json.valid) {
+        fail("등록되지 않은 참여 코드입니다. 연구자에게 문의해주세요.");
+        return;
+      }
+      const current = loadData().settings;
+      saveSettings({
+        participantCode: normalized,
+        enrolledAt: current.enrolledAt || new Date().toISOString(),
+      });
+      router.push("/home");
+    } catch {
+      fail("네트워크 연결을 확인한 뒤 다시 시도해주세요.");
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -68,17 +95,18 @@ export default function LoginPage() {
 
         <motion.button
           onClick={handleLogin}
-          className="w-full mt-6 py-4 rounded-2xl text-lg font-semibold text-white
+          disabled={checking}
+          className={`w-full mt-6 py-4 rounded-2xl text-lg font-semibold text-white
             bg-gradient-to-r from-emerald-500 to-teal-500
-            active:scale-95 transition-transform"
+            active:scale-95 transition-transform ${checking ? "opacity-60" : ""}`}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.97 }}
         >
-          참여 시작하기
+          {checking ? "확인 중..." : "참여 시작하기"}
         </motion.button>
 
-        <p className="text-center text-xs text-slate-400 mt-6">
-          연구 참여 안내에서 받은 코드를 입력해주세요
+        <p className={`text-center text-xs mt-6 ${error ? "text-red-500 font-semibold" : "text-slate-400"}`}>
+          {error || "연구 참여 안내에서 받은 코드를 입력해주세요"}
         </p>
       </motion.div>
     </div>
