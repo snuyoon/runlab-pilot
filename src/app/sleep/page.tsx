@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { loadData, startSleepLog, finishSleepLog } from "@/store/studyStore";
+import { loadData, startSleepLog, finishSleepLog, isWakeEMADue } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
 
 type Phase = "bedtime" | "sleeping" | "alarm" | "dismiss";
@@ -29,7 +29,10 @@ function SleepInner() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("bedtime");
   const [settings] = useState(() => loadData().settings);
-  const [currentTime, setCurrentTime] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  });
   const [slideX, setSlideX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -38,33 +41,15 @@ function SleepInner() {
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const sleepLogIdRef = useRef<string | null>(null);
   const alarmFiredRef = useRef(false);
+  /** 알람 목표 시각(timestamp). 정확 일치(===) 비교 대신 now >= target으로 판정 —
+      JS가 잠깐 멈췄다 재개돼도(화면 잠김/스로틀) 알람을 놓치지 않는다 */
+  const alarmTargetRef = useRef(0);
   const phaseRef = useRef<Phase>("bedtime");
-  phaseRef.current = phase;
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   const alarmTime = `${String(settings.alarmHour).padStart(2, "0")}:${String(settings.alarmMinute).padStart(2, "0")}`;
-
-  // ── 시계 + 알람 시각 감시 ──
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setCurrentTime(
-        `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
-      );
-      if (
-        phaseRef.current === "sleeping" &&
-        !alarmFiredRef.current &&
-        now.getHours() === settings.alarmHour &&
-        now.getMinutes() === settings.alarmMinute
-      ) {
-        alarmFiredRef.current = true;
-        triggerAlarm();
-      }
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.alarmHour, settings.alarmMinute]);
 
   // ── 알람음 (WebAudio 비프음 루프) ──
   const beep = useCallback(() => {
@@ -104,6 +89,31 @@ function SleepInner() {
     }
   }, []);
 
+  // ── 화면 꺼짐 방지 (Wake Lock) ──
+  // 페이지가 잠깐이라도 hidden이 되면(앱 전환, 알림 탭 등) 브라우저가 lock을
+  // 자동 해제하므로, visible 복귀 시마다 재획득해야 밤새 유지된다
+  const requestWakeLock = useCallback(() => {
+    try {
+      const nav = navigator as Navigator & {
+        wakeLock?: {
+          request: (type: "screen") => Promise<{
+            release: () => Promise<void>;
+            addEventListener?: (t: string, cb: () => void) => void;
+          }>;
+        };
+      };
+      nav.wakeLock
+        ?.request("screen")
+        .then((lock) => {
+          wakeLockRef.current = lock;
+          lock.addEventListener?.("release", () => {
+            wakeLockRef.current = null;
+          });
+        })
+        .catch(() => {});
+    } catch {}
+  }, []);
+
   // ── 페이즈 전환 ──
   const startSleep = useCallback(() => {
     // 사용자 제스처 안에서 AudioContext 준비 (iOS 사운드 정책)
@@ -117,22 +127,16 @@ function SleepInner() {
       audioCtxRef.current = audioCtxRef.current ?? new Ctor();
       audioCtxRef.current.resume().catch(() => {});
     } catch {}
-    // 화면 꺼짐 방지
-    try {
-      const nav = navigator as Navigator & {
-        wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
-      };
-      nav.wakeLock
-        ?.request("screen")
-        .then((lock) => {
-          wakeLockRef.current = lock;
-        })
-        .catch(() => {});
-    } catch {}
+    requestWakeLock();
+    // 알람 목표 시각: 이미 지난 시각이면 내일
+    const t = new Date();
+    t.setHours(settings.alarmHour, settings.alarmMinute, 0, 0);
+    if (t.getTime() <= Date.now()) t.setDate(t.getDate() + 1);
+    alarmTargetRef.current = t.getTime();
     sleepLogIdRef.current = startSleepLog();
     alarmFiredRef.current = false;
     setPhase("sleeping");
-  }, []);
+  }, [requestWakeLock, settings.alarmHour, settings.alarmMinute]);
 
   const triggerAlarm = useCallback(() => {
     setPhase("alarm");
@@ -144,8 +148,51 @@ function SleepInner() {
     wakeLockRef.current?.release().catch(() => {});
     if (sleepLogIdRef.current) finishSleepLog(sleepLogIdRef.current);
     setPhase("dismiss");
-    setTimeout(() => router.push("/ema"), 1200);
+    // 오늘 기상 설문을 이미 했다면(낮잠 등) 홈으로
+    setTimeout(() => router.push(isWakeEMADue() ? "/ema" : "/home"), 1200);
   }, [router, stopAlarmSound]);
+
+  // ── 시계 + 알람 시각 감시 ──
+  const doTick = useCallback(() => {
+    const now = new Date();
+    setCurrentTime(
+      `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+    );
+    if (
+      phaseRef.current === "sleeping" &&
+      !alarmFiredRef.current &&
+      alarmTargetRef.current > 0 &&
+      Date.now() >= alarmTargetRef.current
+    ) {
+      alarmFiredRef.current = true;
+      triggerAlarm();
+    }
+  }, [triggerAlarm]);
+
+  useEffect(() => {
+    const interval = setInterval(doTick, 1000);
+    return () => clearInterval(interval);
+  }, [doTick]);
+
+  // visible 복귀 시: wake lock 재획득 + 놓친 알람 즉시 발화
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (
+        (phaseRef.current === "sleeping" || phaseRef.current === "alarm") &&
+        !wakeLockRef.current
+      ) {
+        requestWakeLock();
+      }
+      doTick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [requestWakeLock, doTick]);
 
   // 페이지 이탈 시 정리
   useEffect(() => {

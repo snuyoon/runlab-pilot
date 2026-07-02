@@ -13,7 +13,8 @@
 
 /** 참여자 및 알람 설정 */
 export interface StudySettings {
-  participantCode: string; // 연구 참여 코드 (예: SNU-001)
+  participantCode: string; // 연구 참여 코드 (예: SNU-01-8XKQ)
+  participantLabel: string; // 서버에 등록된 참여자 라벨 (오입력 확인용)
   enrolledAt: string; // 최초 로그인 시각 (ISO)
   alarmHour: number;
   alarmMinute: number;
@@ -117,6 +118,7 @@ const STORAGE_KEY = "runlab-pilot-v1";
 const defaultData: StudyData = {
   settings: {
     participantCode: "",
+    participantLabel: "",
     enrolledAt: "",
     alarmHour: 7,
     alarmMinute: 0,

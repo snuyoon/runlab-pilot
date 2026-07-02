@@ -41,6 +41,7 @@ export default function LoginPage() {
       const current = loadData().settings;
       saveSettings({
         participantCode: normalized,
+        participantLabel: typeof json.label === "string" ? json.label : "",
         enrolledAt: current.enrolledAt || new Date().toISOString(),
       });
       router.push("/home");

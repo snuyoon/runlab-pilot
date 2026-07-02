@@ -8,7 +8,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { addWakeEMA, todayStr } from "@/store/studyStore";
+import { addWakeEMA, todayStr, isWakeEMADue } from "@/store/studyStore";
+import { useMounted } from "@/hooks/useMounted";
 
 interface Question {
   id: "sleepQuality" | "fatigue" | "mood";
@@ -39,11 +40,39 @@ const questions: Question[] = [
 ];
 
 export default function EMAPage() {
+  const mounted = useMounted();
+  if (!mounted) return <div className="mobile-frame bg-blue-50" />;
+  return <EMAInner />;
+}
+
+function EMAInner() {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  // 오늘 이미 완료했으면 중복 제출 차단 (직접 URL 진입, 뒤로가기 등)
+  const [alreadyDone] = useState(() => !isWakeEMADue());
 
   const allAnswered = questions.every((q) => answers[q.id] !== undefined);
+
+  if (alreadyDone && !submitted) {
+    return (
+      <div className="mobile-frame flex flex-col items-center justify-center px-8 bg-gradient-to-b from-blue-50 to-indigo-50">
+        <div className="text-7xl mb-6">✅</div>
+        <div className="text-xl font-bold text-slate-800 mb-2">오늘 기상 설문은 완료했어요</div>
+        <p className="text-sm text-slate-500 mb-8 text-center">
+          기상 설문은 하루에 한 번만 응답합니다.
+          <br />내일 아침에 다시 만나요!
+        </p>
+        <button
+          onClick={() => router.push("/home")}
+          className="w-full py-4 rounded-2xl text-lg font-semibold text-white
+            bg-gradient-to-r from-indigo-500 to-purple-500 shadow-lg shadow-indigo-200"
+        >
+          홈으로
+        </button>
+      </div>
+    );
+  }
 
   const handleSelect = (questionId: string, value: number) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));

@@ -43,20 +43,12 @@ await sql`
   CREATE INDEX IF NOT EXISTS idx_records_participant ON records (participant_code, kind, date)
 `;
 
-// 초기 참여자 코드 (관리자 화면에서 추가/비활성화 가능)
-const seed = [
-  ["TEST-01", "연구자 테스트"],
-  ...Array.from({ length: 10 }, (_, i) => [
-    `SNU-${String(i + 1).padStart(3, "0")}`,
-    `참여자 ${i + 1}`,
-  ]),
-];
-for (const [code, label] of seed) {
-  await sql`
-    INSERT INTO participants (code, label) VALUES (${code}, ${label})
-    ON CONFLICT (code) DO NOTHING
-  `;
-}
+// 연구자 테스트 코드만 시드 — 참여자 코드는 추측 불가능한 무작위 접미사로
+// scripts/add-participants.mjs 또는 관리자 화면에서 발급한다
+await sql`
+  INSERT INTO participants (code, label) VALUES ('TEST-01', '연구자 테스트')
+  ON CONFLICT (code) DO NOTHING
+`;
 
 const participants = await sql`SELECT code, label, active FROM participants ORDER BY code`;
 console.log("스키마 생성 완료. 등록된 참여자:");

@@ -25,6 +25,7 @@ import {
   OSTRCProblem,
   PriorProblem,
 } from "@/store/studyStore";
+import { useMounted } from "@/hooks/useMounted";
 import {
   OSTRC_INTRO,
   OSTRC_CORE,
@@ -215,18 +216,44 @@ function NextButton({ enabled, onClick, label = "다음" }: { enabled: boolean; 
 
 // ─── 메인 페이지 ────────────────────────────────────────────
 
+/**
+ * 작성 중 초안 보존: 문제를 여러 건 등록하다가 이탈(뒤로가기/앱 종료)해도
+ * 이미 완료한 문제들이 유실되지 않도록, "예(다른 문제 있음)" 선택 시점마다
+ * localStorage에 초안을 저장하고 재진입 시 복원한다. 최종 제출 시 삭제.
+ */
+const DRAFT_KEY = "runlab-ostrc-draft-v1";
+
+function loadDraftProblems(): OSTRCProblem[] {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d.week === mondayOf() && Array.isArray(d.problems)) return d.problems;
+    }
+  } catch {}
+  return [];
+}
+
 export default function OSTRCPage() {
+  const mounted = useMounted();
+  // localStorage(초안/이전 문제)는 클라이언트 전용
+  if (!mounted) return <div className="mobile-frame bg-blue-50" />;
+  return <OSTRCInner />;
+}
+
+function OSTRCInner() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("intro");
+  // 이탈했던 초안이 있으면 복원하고 다음 문제의 Q1부터 이어서 시작
+  const [problems, setProblems] = useState<OSTRCProblem[]>(() => loadDraftProblems());
+  const [step, setStep] = useState<Step>(() =>
+    loadDraftProblems().length > 0 ? "core0" : "intro"
+  );
   const [history, setHistory] = useState<Step[]>([]);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
-  const [problems, setProblems] = useState<OSTRCProblem[]>([]);
   const [moreAnswer, setMoreAnswer] = useState<string | null>(null);
   const [maxSeverity, setMaxSeverity] = useState(0);
   // 이전 주까지 보고된 문제 목록 (반복 연결 후보) — 위저드 진입 시점에 1회 로드
-  const [priors] = useState<PriorProblem[]>(() =>
-    typeof window === "undefined" ? [] : priorProblems()
-  );
+  const [priors] = useState<PriorProblem[]>(() => priorProblems());
 
   const problemNo = problems.length + 1;
 
@@ -253,6 +280,9 @@ export default function OSTRCPage() {
       noProblem: finalProblems.length === 0,
       problems: finalProblems,
     });
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
     setMaxSeverity(finalProblems.reduce((s, p) => Math.max(s, p.severityScore), 0));
     setStep("done");
   };
@@ -285,6 +315,10 @@ export default function OSTRCPage() {
     setMoreAnswer(answer);
     const finished = [...problems, draftToProblem(draft)];
     if (answer === "예") {
+      // 완료된 문제들을 초안으로 즉시 저장 — 다음 문제 작성 중 이탈해도 유실 없음
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ week: mondayOf(), problems: finished }));
+      } catch {}
       setProblems(finished);
       setDraft(emptyDraft());
       setMoreAnswer(null);

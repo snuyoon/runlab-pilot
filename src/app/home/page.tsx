@@ -99,7 +99,8 @@ function HomeInner() {
             RunLab <span className="text-indigo-500 text-sm align-top">PILOT</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            {data.settings.participantCode} ·{" "}
+            {data.settings.participantCode}
+            {data.settings.participantLabel && ` (${data.settings.participantLabel})`} ·{" "}
             {new Date().toLocaleDateString("ko-KR", {
               month: "long",
               day: "numeric",
