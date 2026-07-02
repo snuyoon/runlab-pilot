@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, saveSettings, applyRemoteReset } from "@/store/studyStore";
+import { isNativeApp, nativeCancelAlarm, nativeSetParticipant } from "@/lib/native";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,6 +46,14 @@ export default function LoginPage() {
       // 걸려 있으면 이전 로컬 기록을 비우고 새로 시작한다
       if (codeChanged || serverResetAt !== current.lastResetAck) {
         applyRemoteReset(serverResetAt);
+      }
+      // 기기 공유/계정 전환: 이전 참여자의 시스템 알람이 계속 울리지 않도록 취소
+      // (원격 초기화는 같은 참여자의 계속 진행이므로 알람 유지)
+      if (codeChanged && current.participantCode && isNativeApp()) {
+        nativeCancelAlarm();
+      }
+      if (isNativeApp()) {
+        nativeSetParticipant(normalized);
       }
       saveSettings({
         participantCode: normalized,

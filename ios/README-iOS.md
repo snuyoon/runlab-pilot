@@ -18,8 +18,8 @@
 │     · localStorage 영속 (로그인/기록 유지)
 │     · JS 브리지: window.webkit.messageHandlers.runlab
 ├── AlarmService
-│     · iOS 26+  → AlarmKit 시스템 알람 (무음 관통, 앱 종료돼도 울림)
-│     · iOS 26미만 → 로컬 알림 폴백 (1분 간격 10회)
+│     · iOS 26.1+  → AlarmKit 시스템 알람 (무음 관통, 앱 종료돼도 울림)
+│     · iOS 26.1미만 → 로컬 알림 폴백 (1분 간격 10회)
 └── OpenSurveyIntent — 알람의 "설문 시작" 버튼 → 앱 열고 /ema로 이동
 ```
 
@@ -29,7 +29,14 @@
 
 ## 빌드 방법
 
-1. **Xcode 설치** (필수, 미설치 상태): App Store에서 "Xcode" 검색 → 설치 (무료, 약 15GB).
+1. **Xcode 26.x 필요** — AlarmKit은 iOS 26 SDK에만 있어서 Xcode 26 이상으로 빌드해야
+   한다 (Xcode 16.4는 이미 설치돼 있고 폴백 경로 빌드 검증까지 끝났지만, 16.4로 최종
+   빌드하면 AlarmKit이 빠진 앱이 됨). 이 Mac(macOS 15.3.2) 기준 두 경로 (2026-07 확인):
+   - **A. macOS 15.7.7 업데이트 (6GB, 마이너)** → Xcode **26.3** 설치 (Sequoia 15.6+에서
+     도는 마지막 26.x, iOS 26.2 SDK — AlarmKit 컴파일 가능). App Store가 26.3을 안 주면
+     developer.apple.com/download/all 에서 Xcode 26.3 xip 직접 다운로드.
+   - **B. macOS Tahoe 26.5.2 업그레이드 (10.5GB, 메이저)** → App Store 최신 Xcode 26.6.
+     (Xcode 26.4+는 Tahoe 26.2+ 필수)
    설치 후 한 번 실행해 추가 컴포넌트(iOS 플랫폼) 설치.
 2. 프로젝트 열기:
    ```bash
@@ -48,8 +55,9 @@
 3. 설정 시각에 잠금화면에 시스템 알람이 떠야 함 (무음 스위치 켜도 소리 남)
 4. "설문 시작" 버튼 → 앱이 열리며 기상 설문으로 이동
 - ⚠️ 시뮬레이터는 잠금화면 알람 버그가 있어 실기기에서 확인할 것 (iOS 26.1+ 시뮬레이터 이슈)
-- AlarmKit은 iOS 26 이상. 참여자 아이폰이 iOS 26 미만이면 폴백(반복 알림)으로 동작 —
-  파일럿 안내문에 "iOS 26 이상으로 업데이트" 권장
+- AlarmKit 경로는 **iOS 26.1 이상**에서 동작 (26.0의 stopButton 이니셜라이저가 26.1에서
+  deprecated돼 현행 API 기준으로 작성 — 26.0 이하 기기는 폴백). 참여자 아이폰이 26.1
+  미만이면 폴백(반복 알림)으로 동작 — 파일럿 안내문에 "iOS 26.1 이상으로 업데이트" 권장
 
 ## 참여자 배포 (TestFlight)
 

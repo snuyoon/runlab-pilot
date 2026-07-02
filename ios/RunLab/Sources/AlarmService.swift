@@ -8,10 +8,12 @@ import ActivityKit
 
 /// 기상 알람 스케줄러.
 ///
-/// - iOS 26+: **AlarmKit** — 시스템이 알람을 소유하므로 앱이 종료돼도 울리고,
+/// - iOS 26.1+: **AlarmKit** — 시스템이 알람을 소유하므로 앱이 종료돼도 울리고,
 ///   무음 모드·집중 모드를 관통한다 (Apple 공식 보장). entitlement 불필요,
 ///   Info.plist의 NSAlarmKitUsageDescription만 필요.
-/// - iOS 26 미만: 로컬 알림 폴백 — 알람 시각부터 1분 간격 10회 반복 알림.
+///   (26.1 기준인 이유: stopButton 없는 현행 Alert 이니셜라이저가 iOS 26.1+ —
+///   26.0의 stopButton 버전은 26.1에서 deprecated. 26.0 기기는 폴백으로 처리)
+/// - iOS 26.1 미만: 로컬 알림 폴백 — 알람 시각부터 1분 간격 10회 반복 알림.
 ///   (알림 사운드는 최대 30초, 풀스크린 알람 UI 없음 — 제한적 폴백)
 enum AlarmService {
     static let alarmIDKey = "runlab.alarmkit.id"
@@ -21,7 +23,7 @@ enum AlarmService {
 
     static func scheduleDaily(hour: Int, minute: Int) {
         Task {
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.1, *) {
                 await scheduleWithAlarmKit(hour: hour, minute: minute)
             } else {
                 await scheduleLegacy(hour: hour, minute: minute)
@@ -31,7 +33,7 @@ enum AlarmService {
 
     static func cancelAll() {
         Task {
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.1, *) {
                 cancelAlarmKit()
             }
             cancelLegacy()
@@ -41,7 +43,7 @@ enum AlarmService {
     // MARK: - AlarmKit (iOS 26+)
 
     #if canImport(AlarmKit)
-    @available(iOS 26.0, *)
+    @available(iOS 26.1, *)
     private static func scheduleWithAlarmKit(hour: Int, minute: Int) async {
         let manager = AlarmManager.shared
 
@@ -106,7 +108,7 @@ enum AlarmService {
         }
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.1, *)
     private static func cancelAlarmKit() {
         guard let stored = UserDefaults.standard.string(forKey: alarmIDKey),
               let id = UUID(uuidString: stored) else { return }
@@ -164,6 +166,6 @@ enum AlarmService {
 
 #if canImport(AlarmKit)
 /// AlarmKit 메타데이터 — 빈 구현 허용 (공식 문서 명시)
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 struct RunLabAlarmMetadata: AlarmMetadata {}
 #endif
