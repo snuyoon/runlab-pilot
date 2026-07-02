@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { loadData, saveSettings } from "@/store/studyStore";
+import { loadData, saveSettings, applyRemoteReset } from "@/store/studyStore";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,12 +39,18 @@ export default function LoginPage() {
         return;
       }
       const current = loadData().settings;
+      const codeChanged = current.participantCode !== normalized;
+      const serverResetAt = typeof json.resetAt === "string" ? json.resetAt : "";
+      // 다른 코드로 로그인하거나(기기 공유/계정 전환) 관리자 원격 초기화가
+      // 걸려 있으면 이전 로컬 기록을 비우고 새로 시작한다
+      if (codeChanged || serverResetAt !== current.lastResetAck) {
+        applyRemoteReset(serverResetAt);
+      }
       saveSettings({
         participantCode: normalized,
         participantLabel: typeof json.label === "string" ? json.label : "",
-        enrolledAt: current.enrolledAt || new Date().toISOString(),
-        // 로그인 시점의 서버 초기화 시각을 기준점으로 — 과거 초기화가 재적용되지 않도록
-        lastResetAck: typeof json.resetAt === "string" ? json.resetAt : "",
+        enrolledAt: codeChanged ? new Date().toISOString() : current.enrolledAt || new Date().toISOString(),
+        lastResetAck: serverResetAt,
       });
       router.push("/home");
     } catch {
