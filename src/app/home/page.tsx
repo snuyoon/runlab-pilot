@@ -139,25 +139,28 @@ function HomeInner() {
           </span>
         </motion.button>
 
-        {/* 러닝 세션 RPE */}
+        {/* 러닝 세션 RPE — 하루 1회 */}
         <motion.button
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.06 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => router.push("/rpe")}
-          className="w-full flex items-center gap-3.5 rounded-2xl p-4 text-left bg-white border-2 border-slate-100 shadow-sm"
+          onClick={() => todaySessions.length === 0 && router.push("/rpe")}
+          className={`w-full flex items-center gap-3.5 rounded-2xl p-4 text-left border-2
+            ${todaySessions.length > 0 ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100 shadow-sm"}`}
         >
           <span className="text-3xl">🏃</span>
           <div className="flex-1">
             <div className="font-semibold text-slate-800 text-[15px]">러닝 세션 기록</div>
             <div className="text-xs text-slate-400 mt-0.5">
               {todaySessions.length > 0
-                ? `오늘 ${todaySessions.length}건 기록됨 · 추가 기록 가능`
+                ? `오늘 완료! (RPE ${todaySessions[0].rpe}점)`
                 : "러닝을 마쳤다면 세션 강도를 기록해주세요"}
             </div>
           </div>
-          <span className="text-xl text-slate-300">＋</span>
+          <span className={`text-xl ${todaySessions.length > 0 ? "" : "text-slate-300"}`}>
+            {todaySessions.length > 0 ? "✅" : "＋"}
+          </span>
         </motion.button>
 
         {/* 주간 OSTRC */}

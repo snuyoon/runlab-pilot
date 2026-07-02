@@ -9,7 +9,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { addSessionRPE, todayStr } from "@/store/studyStore";
+import { addSessionRPE, todayStr, isRPEDoneToday } from "@/store/studyStore";
+import { useMounted } from "@/hooks/useMounted";
 
 /** 1~10 강도 라벨 및 색상 */
 const RPE_LEVELS: { value: number; label: string; color: string }[] = [
@@ -26,12 +27,40 @@ const RPE_LEVELS: { value: number; label: string; color: string }[] = [
 ];
 
 export default function RPEPage() {
+  const mounted = useMounted();
+  if (!mounted) return <div className="mobile-frame bg-orange-50" />;
+  return <RPEInner />;
+}
+
+function RPEInner() {
   const router = useRouter();
   const [rpe, setRpe] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  // 세션 RPE는 하루 1회 — 그날의 대표 러닝 세션에 대해 응답
+  const [alreadyDone] = useState(() => isRPEDoneToday());
 
   const selected = RPE_LEVELS.find((l) => l.value === rpe);
+
+  if (alreadyDone && !submitted) {
+    return (
+      <div className="mobile-frame flex flex-col items-center justify-center px-8 bg-gradient-to-b from-orange-50 to-amber-50">
+        <div className="text-7xl mb-6">✅</div>
+        <div className="text-xl font-bold text-slate-800 mb-2">오늘 세션 기록은 완료했어요</div>
+        <p className="text-sm text-slate-500 mb-8 text-center">
+          러닝 세션 기록은 하루에 한 번만 응답합니다.
+          <br />내일 러닝 후에 다시 기록해주세요!
+        </p>
+        <button
+          onClick={() => router.push("/home")}
+          className="w-full py-4 rounded-2xl text-lg font-semibold text-white
+            bg-gradient-to-r from-orange-500 to-amber-500 shadow-lg shadow-orange-200"
+        >
+          홈으로
+        </button>
+      </div>
+    );
+  }
 
   const handleSubmit = () => {
     if (rpe === null) return;

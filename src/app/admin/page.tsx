@@ -206,6 +206,60 @@ function buildCSV(records: RecordRow[]): string {
   return lines.join("\n");
 }
 
+// ─── 상세 보기 표시 유틸 ────────────────────────────────────
+
+/** 1~5 응답값 색상 (낮을수록 나쁨 기준) */
+function chip5(v: number): string {
+  if (v <= 2) return "bg-red-100 text-red-600";
+  if (v === 3) return "bg-amber-100 text-amber-700";
+  return "bg-emerald-100 text-emerald-700";
+}
+
+/** RPE 1~10 색상 */
+function chipRPE(v: number): string {
+  if (v <= 3) return "bg-emerald-100 text-emerald-700";
+  if (v <= 5) return "bg-amber-100 text-amber-700";
+  if (v <= 7) return "bg-orange-100 text-orange-700";
+  return "bg-red-100 text-red-700";
+}
+
+function severityColor(score: number): string {
+  if (score >= 50) return "bg-red-400";
+  if (score >= 20) return "bg-amber-400";
+  return "bg-emerald-400";
+}
+
+function fmtClock(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("ko-KR", {
+    month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function sleepDuration(l: SleepLog): string {
+  if (!l.alarmDismissedAt) return "—";
+  const ms = new Date(l.alarmDismissedAt).getTime() - new Date(l.bedtimeAt).getTime();
+  if (ms <= 0 || ms > 24 * 3600000) return "—";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.round((ms % 3600000) / 60000);
+  return `${h}시간 ${m}분`;
+}
+
+/** OSTRC Q1 응답 요약 라벨 */
+const Q1_SHORT = ["문제 없음", "문제 있으나 완전 참여", "참여 감소", "참여 불가"];
+const DEGREE_SHORT = ["없음", "작음", "보통", "큼"];
+
+function coreSummary(p: OSTRCResponse["problems"][number]): string {
+  if (p.q2 === null) return `참여: ${Q1_SHORT[p.q1]} → Q2~Q4 자동 스킵 (게이트키퍼)`;
+  return `참여: ${Q1_SHORT[p.q1]} · 훈련수정: ${DEGREE_SHORT[p.q2]} · 경기력영향: ${DEGREE_SHORT[p.q3 ?? 0]} · 증상: ${DEGREE_SHORT[p.q4 ?? 0]}`;
+}
+
 // ─── 페이지 ─────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -493,131 +547,216 @@ function AdminInner() {
 
         {/* 참여자 상세 */}
         {selected && sel && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm mb-6">
-            <div className="text-sm font-bold text-slate-600 mb-4">
-              {selected} 상세 기록
-              <span className="font-normal text-slate-400 ml-2">
-                마지막 활동: {sel.lastActivity ? new Date(sel.lastActivity).toLocaleString("ko-KR") : "없음"}
-              </span>
+          <div className="bg-white rounded-2xl shadow-sm mb-6 overflow-hidden">
+            {/* 상세 헤더 */}
+            <div className="bg-slate-800 text-white px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="font-mono font-bold text-lg">
+                  {selected}
+                  <span className="font-sans font-normal text-sm text-slate-300 ml-2">
+                    {data.participants.find((p) => p.code === selected)?.label}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-400 mt-0.5">
+                  마지막 활동: {fmtDateTime(sel.lastActivity)}
+                </div>
+              </div>
+              <div className="flex gap-4 text-center">
+                {[
+                  ["☀️ 기상 설문", `${sel.emas.length}회`],
+                  ["🏃 러닝 세션", `${sel.rpes.length}회`],
+                  ["📋 주간 설문", `${sel.ostrcs.length}주`],
+                  ["🌙 수면 기록", `${sel.sleepLogs.length}회`],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <div className="text-lg font-bold">{value}</div>
+                    <div className="text-[10px] text-slate-400">{label}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="grid md:grid-cols-2 gap-5">
-              {/* OSTRC */}
-              <div className="md:col-span-2">
-                <div className="text-xs font-bold text-slate-500 mb-2">주간 건강 설문 (OSTRC)</div>
+
+            <div className="p-6 flex flex-col gap-8">
+              {/* ── OSTRC — 주별 카드 ── */}
+              <section>
+                <h3 className="text-sm font-bold text-slate-700 mb-3">📋 주간 건강 설문 (OSTRC)</h3>
                 {sel.ostrcs.length === 0 ? (
-                  <p className="text-xs text-slate-300">기록 없음</p>
+                  <p className="text-sm text-slate-300">기록 없음</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs min-w-[640px]">
+                  <div className="flex flex-col gap-3">
+                    {[...sel.ostrcs]
+                      .sort((a, b) =>
+                        a.weekKey !== b.weekKey
+                          ? a.weekKey < b.weekKey ? 1 : -1
+                          : a.completedAt < b.completedAt ? 1 : -1
+                      )
+                      .map((r) => (
+                        <div key={r.id} className="border border-slate-200 rounded-xl overflow-hidden">
+                          <div className="bg-slate-50 px-4 py-2.5 flex items-center justify-between">
+                            <span className="text-sm font-semibold text-slate-700">
+                              {r.weekKey} 주
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              응답 {fmtDateTime(r.completedAt)}
+                            </span>
+                          </div>
+                          {r.noProblem || r.problems.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-emerald-600 font-semibold">
+                              ✅ 건강 문제 없음 · 심각도 0/100
+                            </div>
+                          ) : (
+                            r.problems.map((pr, i) => (
+                              <div
+                                key={r.id + i}
+                                className={`px-4 py-3 ${i > 0 ? "border-t border-slate-100" : ""}`}
+                              >
+                                <div className="flex items-center gap-2 flex-wrap mb-2">
+                                  <span className="text-sm font-bold text-slate-800">{pr.label}</span>
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full
+                                      ${pr.recurrenceOfId ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"}`}
+                                  >
+                                    {pr.recurrenceOfId ? "🔁 지속 중인 문제" : "신규"}
+                                  </span>
+                                  {pr.substantial && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">
+                                      ⚠️ 중대한 문제
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 mb-1.5">
+                                  <span className="text-xs text-slate-500 w-14 shrink-0">심각도</span>
+                                  <div className="flex-1 max-w-[240px] h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${severityColor(pr.severityScore)}`}
+                                      style={{ width: `${pr.severityScore}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-sm font-bold text-slate-700 w-16">
+                                    {pr.severityScore}<span className="text-xs font-normal text-slate-400">/100</span>
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    훈련 쉰 날 <strong className="text-slate-700">{pr.timeLossDays ?? "—"}</strong>일
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-400">{coreSummary(pr)}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </section>
+
+              {/* ── EMA + RPE ── */}
+              <div className="grid lg:grid-cols-2 gap-8">
+                <section>
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">
+                    ☀️ 기상 설문 <span className="font-normal text-slate-400">(최근 14일 · 1~5점)</span>
+                  </h3>
+                  {sel.emas.length === 0 ? (
+                    <p className="text-sm text-slate-300">기록 없음</p>
+                  ) : (
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-slate-400 text-left">
-                          <th className="py-1.5 pr-3">주 (월요일)</th>
-                          <th className="pr-3">문제</th>
-                          <th className="pr-3">심각도</th>
-                          <th className="pr-3">중대</th>
-                          <th className="pr-3">쉰 날</th>
-                          <th className="pr-3">반복</th>
-                          <th>Q1~Q4</th>
+                        <tr className="text-slate-400 text-xs text-left border-b border-slate-200">
+                          <th className="py-2 font-semibold">날짜</th>
+                          <th className="font-semibold text-center">수면질</th>
+                          <th className="font-semibold text-center">피로/근육통</th>
+                          <th className="font-semibold text-center">기분</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {[...sel.ostrcs]
-                          .sort((a, b) => (a.weekKey < b.weekKey ? 1 : -1))
-                          .flatMap((r) =>
-                            r.noProblem || r.problems.length === 0
-                              ? [
-                                  <tr key={r.id} className="border-t border-slate-100">
-                                    <td className="py-1.5 pr-3">{r.weekKey}</td>
-                                    <td colSpan={6} className="text-emerald-500">문제 없음 (심각도 0)</td>
-                                  </tr>,
-                                ]
-                              : r.problems.map((pr, i) => (
-                                  <tr key={r.id + i} className="border-t border-slate-100">
-                                    <td className="py-1.5 pr-3">{i === 0 ? r.weekKey : ""}</td>
-                                    <td className="pr-3 font-semibold text-slate-700">{pr.label}</td>
-                                    <td className="pr-3">
-                                      <span className={pr.severityScore >= 50 ? "text-red-500 font-bold" : ""}>
-                                        {pr.severityScore}
-                                      </span>
-                                      /100
-                                    </td>
-                                    <td className="pr-3">{pr.substantial ? "⚠️ 예" : "아니요"}</td>
-                                    <td className="pr-3">{pr.timeLossDays ?? "—"}일</td>
-                                    <td className="pr-3">{pr.recurrenceOfId ? "🔁 지속" : "신규"}</td>
-                                    <td className="text-slate-400">
-                                      {pr.q1 + 1}
-                                      {pr.q2 !== null ? `·${pr.q2 + 1}·${pr.q3! + 1}·${pr.q4! + 1}` : " (게이트키퍼: 참여불가)"}
-                                    </td>
-                                  </tr>
-                                ))
-                          )}
+                        {[...sel.emas]
+                          .sort((a, b) => (a.date < b.date ? 1 : -1))
+                          .slice(0, 14)
+                          .map((e, i) => (
+                            <tr key={e.id} className={i % 2 === 1 ? "bg-slate-50" : ""}>
+                              <td className="py-2 text-slate-600">{e.date.slice(5).replace("-", "/")}</td>
+                              {[e.sleepQuality, e.fatigue, e.mood].map((v, j) => (
+                                <td key={j} className="text-center py-1.5">
+                                  <span className={`inline-block w-8 py-0.5 rounded-lg text-xs font-bold ${chip5(v)}`}>
+                                    {v}
+                                  </span>
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
-                  </div>
-                )}
+                  )}
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-bold text-slate-700 mb-3">
+                    🏃 러닝 세션 RPE <span className="font-normal text-slate-400">(최근 14건 · 1~10점)</span>
+                  </h3>
+                  {sel.rpes.length === 0 ? (
+                    <p className="text-sm text-slate-300">기록 없음</p>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-slate-400 text-xs text-left border-b border-slate-200">
+                          <th className="py-2 font-semibold">날짜</th>
+                          <th className="font-semibold text-center">RPE</th>
+                          <th className="font-semibold">메모</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...sel.rpes]
+                          .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))
+                          .slice(0, 14)
+                          .map((s2, i) => (
+                            <tr key={s2.id} className={i % 2 === 1 ? "bg-slate-50" : ""}>
+                              <td className="py-2 text-slate-600">{s2.date.slice(5).replace("-", "/")}</td>
+                              <td className="text-center py-1.5">
+                                <span className={`inline-block w-8 py-0.5 rounded-lg text-xs font-bold ${chipRPE(s2.rpe)}`}>
+                                  {s2.rpe}
+                                </span>
+                              </td>
+                              <td className="text-slate-500 text-xs">{s2.note || "—"}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
               </div>
 
-              {/* EMA */}
-              <div>
-                <div className="text-xs font-bold text-slate-500 mb-2">기상 설문 (최근 14건)</div>
-                {sel.emas.length === 0 ? (
-                  <p className="text-xs text-slate-300">기록 없음</p>
+              {/* ── 수면 로그 ── */}
+              <section>
+                <h3 className="text-sm font-bold text-slate-700 mb-3">
+                  🌙 수면 기록 <span className="font-normal text-slate-400">(최근 14건 · 취침 버튼~알람 해제)</span>
+                </h3>
+                {sel.sleepLogs.length === 0 ? (
+                  <p className="text-sm text-slate-300">기록 없음</p>
                 ) : (
-                  <table className="w-full text-xs">
+                  <table className="w-full text-sm max-w-xl">
                     <thead>
-                      <tr className="text-slate-400 text-left">
-                        <th className="py-1.5">날짜</th>
-                        <th>수면질</th>
-                        <th>피로</th>
-                        <th>기분</th>
+                      <tr className="text-slate-400 text-xs text-left border-b border-slate-200">
+                        <th className="py-2 font-semibold">기상 날짜</th>
+                        <th className="font-semibold">취침</th>
+                        <th className="font-semibold">알람 해제</th>
+                        <th className="font-semibold">누운 시간</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {[...sel.emas]
-                        .sort((a, b) => (a.date < b.date ? 1 : -1))
+                      {[...sel.sleepLogs]
+                        .sort((a, b) => (a.bedtimeAt < b.bedtimeAt ? 1 : -1))
                         .slice(0, 14)
-                        .map((e) => (
-                          <tr key={e.id} className="border-t border-slate-100">
-                            <td className="py-1.5">{e.date}</td>
-                            <td>{e.sleepQuality}/5</td>
-                            <td>{e.fatigue}/5</td>
-                            <td>{e.mood}/5</td>
+                        .map((l, i) => (
+                          <tr key={l.id} className={i % 2 === 1 ? "bg-slate-50" : ""}>
+                            <td className="py-2 text-slate-600">{l.date.slice(5).replace("-", "/")}</td>
+                            <td className="text-slate-600">{fmtClock(l.bedtimeAt)}</td>
+                            <td className="text-slate-600">{fmtClock(l.alarmDismissedAt)}</td>
+                            <td className="font-semibold text-slate-700">{sleepDuration(l)}</td>
                           </tr>
                         ))}
                     </tbody>
                   </table>
                 )}
-              </div>
-
-              {/* RPE */}
-              <div>
-                <div className="text-xs font-bold text-slate-500 mb-2">러닝 세션 RPE (최근 14건)</div>
-                {sel.rpes.length === 0 ? (
-                  <p className="text-xs text-slate-300">기록 없음</p>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-slate-400 text-left">
-                        <th className="py-1.5">날짜</th>
-                        <th>RPE</th>
-                        <th>메모</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...sel.rpes]
-                        .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))
-                        .slice(0, 14)
-                        .map((s2) => (
-                          <tr key={s2.id} className="border-t border-slate-100">
-                            <td className="py-1.5">{s2.date}</td>
-                            <td className="font-bold text-orange-500">{s2.rpe}</td>
-                            <td className="text-slate-400">{s2.note}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              </section>
             </div>
           </div>
         )}

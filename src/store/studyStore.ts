@@ -355,6 +355,12 @@ export function isWakeEMADue(data: StudyData = loadData()): boolean {
   return !data.wakeEMAs.some((e) => e.date === today);
 }
 
+/** 오늘 러닝 세션 RPE를 이미 기록했는가 (하루 1회 제한) */
+export function isRPEDoneToday(data: StudyData = loadData()): boolean {
+  const today = todayStr();
+  return data.sessionRPEs.some((s) => s.date === today);
+}
+
 export function isOSTRCDue(data: StudyData = loadData()): boolean {
   const week = mondayOf();
   return !data.ostrcResponses.some((r) => r.weekKey === week);
