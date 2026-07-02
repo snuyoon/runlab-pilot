@@ -5,7 +5,7 @@
  * 알람 해제 후 자동 진입하며, 홈의 '오늘의 할 일'에서도 열 수 있다. 하루 1회.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -13,6 +13,7 @@ import {
   todayStr,
   isWakeEMADue,
   finishLatestOpenSleepLog,
+  loadData,
 } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
 import { ScaleSlider } from "@/components/sliders";
@@ -59,8 +60,14 @@ function EMAInner() {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
+  // 미로그인 상태로 진입(알람 딥링크 등)하면 로그인부터 — 코드 없는 응답 방지
+  const [loggedIn] = useState(() => loadData().settings.participantCode !== "");
+  useEffect(() => {
+    if (!loggedIn) router.replace("/");
+  }, [loggedIn, router]);
   // 오늘 이미 완료했으면 중복 제출 차단 (직접 URL 진입, 뒤로가기 등)
   const [alreadyDone] = useState(() => {
+    if (!loggedIn) return false;
     // 기상 설문 진입 시점 = 기상 → 열려 있는 수면 로그 마감
     // (네이티브 시스템 알람 해제 후, 또는 알람 꺼짐 상태에서 직접 진입한 경우)
     finishLatestOpenSleepLog();
@@ -68,6 +75,10 @@ function EMAInner() {
   });
 
   const allAnswered = questions.every((q) => answers[q.id] !== undefined);
+
+  if (!loggedIn) {
+    return <div className="mobile-frame bg-blue-50" />;
+  }
 
   if (alreadyDone && !submitted) {
     return (

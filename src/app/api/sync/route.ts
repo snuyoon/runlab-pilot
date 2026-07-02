@@ -42,11 +42,17 @@ export async function POST(request: Request) {
       ) {
         continue; // 형식이 깨진 레코드는 건너뜀 (클라이언트 큐에서 제거되도록 실패시키지 않음)
       }
+      // 멱등 업서트: 같은 clientId 재전송 시 최신 payload로 갱신
+      // (수면 로그처럼 취침 시점에 부분 전송 → 기상 시점에 갱신하는 패턴 지원)
       await sql`
         INSERT INTO records (client_id, participant_code, kind, date, completed_at, payload)
         VALUES (${r.clientId}, ${code}, ${r.kind}, ${r.date},
                 ${r.completedAt ?? null}, ${JSON.stringify(r.payload ?? {})}::jsonb)
-        ON CONFLICT (client_id) DO NOTHING
+        ON CONFLICT (client_id) DO UPDATE
+          SET payload = EXCLUDED.payload,
+              completed_at = EXCLUDED.completed_at,
+              date = EXCLUDED.date
+          WHERE records.participant_code = EXCLUDED.participant_code
       `;
       saved++;
     }

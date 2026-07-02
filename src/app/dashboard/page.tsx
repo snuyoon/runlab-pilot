@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, exportJSON, exportCSV, resetAll } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
+import { isNativeApp, nativeCancelAlarm } from "@/lib/native";
 
 export default function DashboardPage() {
   const mounted = useMounted();
@@ -67,6 +68,8 @@ function DashboardInner() {
 
   const handleReset = () => {
     if (confirm("모든 기록이 삭제됩니다. 정말 초기화할까요?\n(테스트용 기능입니다)")) {
+      // 시스템 알람도 함께 취소 — 로컬만 지우면 유령 알람이 계속 울림
+      if (isNativeApp()) nativeCancelAlarm();
       resetAll();
       router.replace("/");
     }

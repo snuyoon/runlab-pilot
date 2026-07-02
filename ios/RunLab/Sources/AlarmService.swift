@@ -42,21 +42,37 @@ enum AlarmService {
     static let scheduledIDsKey = "runlab.alarmkit.ids" // 현재 등록된 AlarmKit id 목록
     static let legacyIDPrefix = "runlab-alarm-"
 
+    /// 작업 직렬화 체인 — sync/cancel이 겹쳐 실행되면 UserDefaults id 목록과
+    /// 실제 예약이 어긋나 취소 불가능한 유령 알람이 생기므로 항상 순차 실행한다
+    @MainActor private static var chain: Task<Void, Never>?
+
+    @MainActor private static func serialize(_ op: @escaping () async -> Void) {
+        let prev = chain
+        chain = Task {
+            await prev?.value
+            await op()
+        }
+    }
+
     /// 웹의 알람 목록 전체를 반영 (기존 전부 취소 후 재등록)
     static func sync(_ specs: [AlarmSpec]) {
-        Task {
-            if #available(iOS 26.1, *) {
-                await syncAlarmKit(specs)
-            } else {
-                await syncLegacy(specs)
+        Task { @MainActor in
+            serialize {
+                if #available(iOS 26.1, *) {
+                    await syncAlarmKit(specs)
+                } else {
+                    await syncLegacy(specs)
+                }
             }
         }
     }
 
     static func cancelAll() {
-        Task {
-            if #available(iOS 26.1, *) { cancelAllAlarmKit() }
-            cancelAllLegacy()
+        Task { @MainActor in
+            serialize {
+                if #available(iOS 26.1, *) { await cancelAllAlarmKit() }
+                await cancelAllLegacy()
+            }
         }
     }
 
@@ -73,6 +89,7 @@ enum AlarmService {
                 let state = try await manager.requestAuthorization()
                 guard state == .authorized else {
                     print("AlarmKit 권한 거부 — 폴백")
+                    await cancelAllAlarmKit() // 남은 AlarmKit 알람 정리 (이중 알람 방지)
                     await syncLegacy(specs)
                     return
                 }
@@ -82,7 +99,8 @@ enum AlarmService {
             }
         }
 
-        cancelAllAlarmKit()
+        await cancelAllAlarmKit()
+        await cancelAllLegacy() // 과거 폴백 알림 잔존분도 정리 (이중 알람 방지)
 
         var newIDs: [String] = []
         for spec in enabled {
@@ -183,8 +201,13 @@ enum AlarmService {
     }
 
     @available(iOS 26.1, *)
-    private static func cancelAllAlarmKit() {
-        let ids = UserDefaults.standard.stringArray(forKey: scheduledIDsKey) ?? []
+    private static func cancelAllAlarmKit() async {
+        // 저장된 id 목록 + 시스템에 실제 등록된 알람 양쪽 모두 취소
+        // (레이스/재설치로 id 목록이 어긋나도 유령 알람이 남지 않도록)
+        var ids = Set(UserDefaults.standard.stringArray(forKey: scheduledIDsKey) ?? [])
+        if let systemAlarms = try? AlarmManager.shared.alarms {
+            for alarm in systemAlarms { ids.insert(alarm.id.uuidString) }
+        }
         for s in ids {
             if let id = UUID(uuidString: s) { try? AlarmManager.shared.cancel(id: id) }
         }
@@ -192,7 +215,7 @@ enum AlarmService {
     }
     #else
     private static func syncAlarmKit(_ specs: [AlarmSpec]) async { await syncLegacy(specs) }
-    private static func cancelAllAlarmKit() {}
+    private static func cancelAllAlarmKit() async {}
     #endif
 
     // MARK: - 폴백 (iOS 26.1 미만): 반복 로컬 알림
@@ -204,28 +227,32 @@ enum AlarmService {
             let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
             guard granted else { print("알림 권한 거부"); return }
         }
-        cancelAllLegacy()
+        await cancelAllLegacy() // 등록 전에 정리 완료를 보장 (콜백 레이스로 새 알림이 지워지는 것 방지)
 
         for (idx, spec) in enabled.enumerated() {
-            // 알람 시각부터 1분 간격 5회 반복 (일반 알림 한계)
-            for i in 0..<5 {
-                let total = spec.minute + i
-                let content = UNMutableNotificationContent()
-                content.title = spec.isWake ? "기상 알람 — RunLab" : spec.label
-                content.body = spec.isWake ? "알림을 눌러 기상 설문을 시작해주세요" : "알람"
-                content.sound = spec.sound == "default"
-                    ? .default
-                    : UNNotificationSound(named: UNNotificationSoundName("\(spec.sound).caf"))
-                var comps = DateComponents()
-                comps.hour = (spec.hour + total / 60) % 24
-                comps.minute = total % 60
-                if !spec.days.isEmpty { comps.weekday = iso8601ToUN(spec.days[0]) }
-                let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
-                let request = UNNotificationRequest(
-                    identifier: "\(legacyIDPrefix)\(idx)-\(i)",
-                    content: content, trigger: trigger
-                )
-                try? await center.add(request)
+            // 선택 요일마다 개별 트리거 (빈 배열 = 매일 → weekday 미지정 1개)
+            let dayList: [Int?] = spec.days.isEmpty ? [nil] : spec.days.map { $0 }
+            for (di, day) in dayList.enumerated() {
+                // 알람 시각부터 1분 간격 5회 반복 (일반 알림 한계)
+                for i in 0..<5 {
+                    let total = spec.minute + i
+                    let content = UNMutableNotificationContent()
+                    content.title = spec.isWake ? "기상 알람 — RunLab" : spec.label
+                    content.body = spec.isWake ? "알림을 눌러 기상 설문을 시작해주세요" : "알람"
+                    content.sound = spec.sound == "default"
+                        ? .default
+                        : UNNotificationSound(named: UNNotificationSoundName("\(spec.sound).caf"))
+                    var comps = DateComponents()
+                    comps.hour = (spec.hour + total / 60) % 24
+                    comps.minute = total % 60
+                    if let day { comps.weekday = iso8601ToUN(day) }
+                    let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: true)
+                    let request = UNNotificationRequest(
+                        identifier: "\(legacyIDPrefix)\(idx)-\(di)-\(i)",
+                        content: content, trigger: trigger
+                    )
+                    try? await center.add(request)
+                }
             }
         }
     }
@@ -233,12 +260,11 @@ enum AlarmService {
     /// 1=월~7=일 → UNCalendar weekday(1=일~7=토)
     private static func iso8601ToUN(_ day: Int) -> Int { day == 7 ? 1 : day + 1 }
 
-    private static func cancelAllLegacy() {
+    private static func cancelAllLegacy() async {
         let center = UNUserNotificationCenter.current()
-        center.getPendingNotificationRequests { reqs in
-            let ids = reqs.map(\.identifier).filter { $0.hasPrefix(legacyIDPrefix) }
-            center.removePendingNotificationRequests(withIdentifiers: ids)
-        }
+        let reqs = await center.pendingNotificationRequests()
+        let ids = reqs.map(\.identifier).filter { $0.hasPrefix(legacyIDPrefix) }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 }
 

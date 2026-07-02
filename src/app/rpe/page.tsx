@@ -6,10 +6,10 @@
  * (세션 RPE, Borg CR-10 기반)
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { addSessionRPE, todayStr, isRPEDoneToday } from "@/store/studyStore";
+import { addSessionRPE, todayStr, isRPEDoneToday, loadData } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
 
 /** 1~10 강도 라벨 및 색상 */
@@ -37,10 +37,19 @@ function RPEInner() {
   const [rpe, setRpe] = useState<number | null>(null);
   const [note, setNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  // 미로그인 진입 방지 — 코드 없는 응답 차단
+  const [loggedIn] = useState(() => loadData().settings.participantCode !== "");
+  useEffect(() => {
+    if (!loggedIn) router.replace("/");
+  }, [loggedIn, router]);
   // 세션 RPE는 하루 1회 — 그날의 대표 러닝 세션에 대해 응답
   const [alreadyDone] = useState(() => isRPEDoneToday());
 
   const selected = RPE_LEVELS.find((l) => l.value === rpe);
+
+  if (!loggedIn) {
+    return <div className="mobile-frame bg-orange-50" />;
+  }
 
   if (alreadyDone && !submitted) {
     return (

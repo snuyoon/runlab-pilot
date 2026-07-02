@@ -305,22 +305,38 @@ function AlarmEditor({ item, canDelete, onSave, onDelete, onCancel }: {
           </div>
         </div>
 
-        {/* 기상 알람 여부 */}
+        {/* 기상 알람 여부 — 기상 알람은 항상 1개 유지(연구 필수): 해제는 다른 알람에서 켜는 방식으로만 */}
         <div className="bg-white rounded-3xl mx-4 mb-4 p-5 flex items-center justify-between">
           <div>
             <div className="font-semibold text-slate-800 text-[15px]">기상 알람 (설문 연동)</div>
-            <div className="text-xs text-slate-400 mt-0.5">이 알람을 끄면 기상 설문이 자동으로 열려요</div>
+            <div className="text-xs text-slate-400 mt-0.5">
+              {item.isWake
+                ? "이 알람을 끄면 기상 설문이 자동으로 열려요. 기상 알람은 연구에 필요해 다른 알람에서 지정을 옮길 수만 있어요"
+                : "이 알람을 끄면 기상 설문이 자동으로 열려요"}
+            </div>
           </div>
-          <Toggle on={draft.isWake} onClick={() => patch({ isWake: !draft.isWake })} label="기상 알람 설정" />
+          <Toggle
+            on={draft.isWake}
+            onClick={() => {
+              if (item.isWake) return; // 기존 기상 알람은 여기서 해제 불가 (0개 방지)
+              patch({ isWake: !draft.isWake });
+            }}
+            label="기상 알람 설정"
+          />
         </div>
 
-        {/* 삭제 */}
-        {canDelete && (
+        {/* 삭제 — 기상 알람은 삭제 불가 (연구 필수, 대신 알람을 꺼둘 수 있음) */}
+        {canDelete && !item.isWake && (
           <div className="px-4 pb-8 pt-1">
             <button onClick={onDelete} className="w-full py-3.5 rounded-2xl text-red-500 font-semibold bg-white">
               알람 삭제
             </button>
           </div>
+        )}
+        {canDelete && item.isWake && (
+          <p className="px-6 pb-8 pt-1 text-center text-xs text-slate-300">
+            기상 알람은 삭제할 수 없어요. 울리지 않게 하려면 목록에서 꺼두세요.
+          </p>
         )}
         {!canDelete && <div className="pb-8" />}
       </motion.div>

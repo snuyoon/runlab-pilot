@@ -14,7 +14,7 @@
  *   → 시간 손실(0~7일) → "다른 건강 문제?" → 예: 문제 반복 등록 / 아니요: 제출
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -22,6 +22,7 @@ import {
   mondayOf,
   makeId,
   priorProblems,
+  loadData,
   OSTRCProblem,
   PriorProblem,
 } from "@/store/studyStore";
@@ -244,6 +245,11 @@ export default function OSTRCPage() {
 
 function OSTRCInner() {
   const router = useRouter();
+  // 미로그인 진입 방지 — 코드 없는 응답 차단
+  const [loggedIn] = useState(() => loadData().settings.participantCode !== "");
+  useEffect(() => {
+    if (!loggedIn) router.replace("/");
+  }, [loggedIn, router]);
   // 이탈했던 초안이 있으면 복원하고 다음 문제의 Q1부터 이어서 시작
   const [problems, setProblems] = useState<OSTRCProblem[]>(() => loadDraftProblems());
   const [step, setStep] = useState<Step>(() =>
@@ -257,6 +263,10 @@ function OSTRCInner() {
   const [priors] = useState<PriorProblem[]>(() => priorProblems());
 
   const problemNo = problems.length + 1;
+
+  if (!loggedIn) {
+    return <div className="mobile-frame bg-blue-50" />;
+  }
 
   const go = (next: Step) => {
     setHistory((h) => [...h, step]);

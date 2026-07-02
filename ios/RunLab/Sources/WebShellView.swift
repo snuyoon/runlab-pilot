@@ -57,6 +57,11 @@ struct WebShellView: UIViewRepresentable {
             UserDefaults.standard.removeObject(forKey: WebRouter.pendingPathKey)
             startURL = Self.baseURL.appendingPathComponent(pending)
             context.coordinator.lastHandledPath = pending
+            // 잠금 해제: 리셋하지 않으면 이후 같은 경로(/ema) 딥링크가 전부 무시된다
+            DispatchQueue.main.async {
+                router.pendingPath = nil
+                context.coordinator.lastHandledPath = nil
+            }
         }
         webView.load(URLRequest(url: startURL))
         return webView
@@ -66,6 +71,8 @@ struct WebShellView: UIViewRepresentable {
         // 딥링크 처리 (알람 해제 → /ema 등). 재로드는 여기서 하지 않는다.
         if let path = router.pendingPath, context.coordinator.lastHandledPath != path {
             context.coordinator.lastHandledPath = path
+            // 함께 저장된 콜드런치용 키도 소비 — 남겨두면 다음 콜드 런치가 엉뚱하게 /ema로 열린다
+            UserDefaults.standard.removeObject(forKey: WebRouter.pendingPathKey)
             let url = Self.baseURL.appendingPathComponent(path)
             webView.load(URLRequest(url: url))
             DispatchQueue.main.async {

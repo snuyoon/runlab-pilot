@@ -168,58 +168,70 @@ function defaultAlarms(): AlarmItem[] {
   ];
 }
 
-const defaultData: StudyData = {
-  settings: {
-    participantCode: "",
-    participantLabel: "",
-    enrolledAt: "",
-    lastResetAck: "",
-    alarms: defaultAlarms(),
-    alarmHour: 7,
-    alarmMinute: 0,
-    alarmEnabled: true,
-    bedtimeHour: 23,
-    bedtimeMinute: 0,
-  },
-  wakeEMAs: [],
-  sessionRPEs: [],
-  ostrcResponses: [],
-  sleepLogs: [],
-  outbox: [],
-};
+function makeDefaultData(): StudyData {
+  return {
+    settings: {
+      participantCode: "",
+      participantLabel: "",
+      enrolledAt: "",
+      lastResetAck: "",
+      alarms: defaultAlarms(),
+      alarmHour: 7,
+      alarmMinute: 0,
+      alarmEnabled: true,
+      bedtimeHour: 23,
+      bedtimeMinute: 0,
+    },
+    wakeEMAs: [],
+    sessionRPEs: [],
+    ostrcResponses: [],
+    sleepLogs: [],
+    outbox: [],
+  };
+}
+
+// SSR 렌더용 고정 기본값 (읽기 전용으로만 사용할 것)
+const defaultData: StudyData = makeDefaultData();
 
 export function loadData(): StudyData {
-  if (typeof window === "undefined") return defaultData;
+  // 항상 새 객체를 반환 — 호출자가 mutate 후 persist하는 패턴이므로
+  // 모듈 레벨 기본 객체가 오염되지 않도록 한다
+  if (typeof window === "undefined") return makeDefaultData();
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      const settings = { ...defaultData.settings, ...parsed.settings };
-      // 마이그레이션: 예전 단일 알람 → alarms 배열
-      if (!Array.isArray(settings.alarms) || settings.alarms.length === 0) {
+      const settings = { ...makeDefaultData().settings, ...parsed.settings };
+      // 마이그레이션: 구버전(alarms 필드 자체가 없음) → 기존 단일 알람 설정을 보존해 변환.
+      // 판정은 병합 전 원본(parsed) 기준 — 병합값으로 판정하면 기본 배열이 끼어들어
+      // 구버전 설정(시각/켜짐)이 유실된다. 빈 배열([])은 '전부 삭제'라는 유효한 상태로 존중.
+      const rawAlarms = parsed?.settings?.alarms;
+      if (!Array.isArray(rawAlarms)) {
         settings.alarms = [
           {
             id: "wake",
-            hour: settings.alarmHour ?? 7,
-            minute: settings.alarmMinute ?? 0,
+            hour: parsed?.settings?.alarmHour ?? 7,
+            minute: parsed?.settings?.alarmMinute ?? 0,
             label: "기상 알람",
-            enabled: settings.alarmEnabled ?? true,
+            enabled: parsed?.settings?.alarmEnabled ?? true,
             sound: "default",
             vibration: "normal",
             days: [],
             isWake: true,
           },
         ];
+      } else {
+        settings.alarms = rawAlarms;
       }
       return {
-        ...defaultData,
+        ...makeDefaultData(),
         ...parsed,
         settings,
         outbox: parsed.outbox ?? [],
       };
     }
   } catch {}
-  return defaultData;
+  return makeDefaultData();
 }
 
 function persist(data: StudyData) {
@@ -239,20 +251,23 @@ export function getAlarms(): AlarmItem[] {
   return loadData().settings.alarms;
 }
 
-/** 대표 기상 알람 (sleep/ema 등 기존 화면 참조용) */
+/** 대표 기상 알람 (sleep/ema 등 기존 화면 참조용) — isWake 알람만 인정 */
 export function wakeAlarm(data: StudyData = loadData()): AlarmItem | null {
-  return data.settings.alarms.find((a) => a.isWake) ?? data.settings.alarms[0] ?? null;
+  return data.settings.alarms.find((a) => a.isWake) ?? null;
 }
 
 /** 알람 목록 저장 + 대표 기상 알람을 구필드에 동기화 (하위 호환) */
 export function saveAlarms(alarms: AlarmItem[]) {
   const data = loadData();
   data.settings.alarms = alarms;
-  const wake = alarms.find((a) => a.isWake) ?? alarms[0];
+  const wake = alarms.find((a) => a.isWake);
   if (wake) {
     data.settings.alarmHour = wake.hour;
     data.settings.alarmMinute = wake.minute;
     data.settings.alarmEnabled = wake.enabled;
+  } else {
+    // 기상 알람이 없으면(전부 삭제 등) 구필드도 꺼짐으로 — 유령 알람 표시/발화 방지
+    data.settings.alarmEnabled = false;
   }
   persist(data);
 }
@@ -310,9 +325,11 @@ export async function flushOutbox(): Promise<void> {
       }),
     });
     if (res.ok) {
-      const sent = new Set(batch.map((b) => b.clientId));
+      // clientId+completedAt로 식별 — 전송 중 같은 clientId의 갱신본(수면 로그 마감 등)이
+      // 새로 큐에 들어온 경우 그 갱신본은 남겨서 다음에 전송되게 한다
+      const sentKeys = new Set(batch.map((b) => `${b.clientId}|${b.completedAt}`));
       const current = loadData(); // 전송 중 추가된 항목 보존
-      current.outbox = current.outbox.filter((o) => !sent.has(o.clientId));
+      current.outbox = current.outbox.filter((o) => !sentKeys.has(`${o.clientId}|${o.completedAt}`));
       persist(current);
       // 남은 게 있으면 이어서 전송
       if (current.outbox.length > 0) {
@@ -377,13 +394,24 @@ export function addOSTRCResponse(entry: Omit<OSTRCResponse, "id" | "completedAt"
 export function startSleepLog(): string {
   const data = loadData();
   const id = makeId();
-  data.sleepLogs.push({
+  const log: SleepLog = {
     id,
     date: todayStr(),
     bedtimeAt: new Date().toISOString(),
     alarmDismissedAt: null,
+  };
+  data.sleepLogs.push(log);
+  // 취침 시점에 부분 전송 — 알람을 무시하고 앱을 안 열어도 취침 기록은 서버에 남는다.
+  // 기상 시 finishSleepLog가 같은 clientId로 재전송하면 서버가 갱신(업서트).
+  enqueue(data, {
+    clientId: log.id,
+    kind: "sleep_log",
+    date: log.date,
+    completedAt: log.bedtimeAt,
+    payload: log,
   });
   persist(data);
+  void flushOutbox();
   return id;
 }
 

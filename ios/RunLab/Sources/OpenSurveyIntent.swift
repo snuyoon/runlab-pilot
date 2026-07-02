@@ -16,7 +16,14 @@ struct OpenSurveyIntent: LiveActivityIntent {
     init(alarmID: String) { self.alarmID = alarmID }
 
     func perform() async throws -> some IntentResult {
-        routeToSurvey()
+        // .custom 보조 버튼은 알람 상태를 바꾸지 않으므로(Apple 문서),
+        // 직접 멈춰야 소리가 그친다 (반복 알람은 다음 회차로 재예약됨)
+        #if canImport(AlarmKit)
+        if #available(iOS 26.1, *), let id = UUID(uuidString: alarmID) {
+            try? AlarmManager.shared.stop(id: id)
+        }
+        #endif
+        await routeToSurvey()
         return .result()
     }
 }
@@ -39,19 +46,15 @@ struct StopSurveyIntent: LiveActivityIntent {
             try? AlarmManager.shared.stop(id: id)
         }
         #endif
-        routeToSurvey()
+        await routeToSurvey()
         return .result()
     }
 }
 
-/// 앱을 열었을 때 기상 설문으로 라우팅 (콜드 런치 대비 UserDefaults에도 저장)
+/// 앱을 열었을 때 기상 설문으로 라우팅.
+/// perform()이 끝나기 전에 반드시 기록되도록 await — 콜드 런치 대비 UserDefaults에도 저장
 @MainActor
-func routeToSurveySync() {
+func routeToSurvey() {
     UserDefaults.standard.set("/ema", forKey: WebRouter.pendingPathKey)
     WebRouter.shared.open("/ema")
-}
-
-/// nonisolated 래퍼 — perform()에서 호출
-func routeToSurvey() {
-    Task { @MainActor in routeToSurveySync() }
 }

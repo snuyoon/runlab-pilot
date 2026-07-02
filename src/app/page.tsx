@@ -3,8 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { loadData, saveSettings, applyRemoteReset } from "@/store/studyStore";
-import { isNativeApp, nativeCancelAlarm, nativeSetParticipant } from "@/lib/native";
+import { loadData, saveSettings, applyRemoteReset, getAlarms } from "@/store/studyStore";
+import {
+  isNativeApp,
+  nativeCancelAlarm,
+  nativeSetParticipant,
+  nativeSyncAlarms,
+} from "@/lib/native";
 import { useMounted } from "@/hooks/useMounted";
 
 export default function LoginPage() {
@@ -78,6 +83,11 @@ function LoginInner() {
         enrolledAt: codeChanged ? new Date().toISOString() : current.enrolledAt || new Date().toISOString(),
         lastResetAck: serverResetAt,
       });
+      // 초기 알람 동기화 — 기본 기상 알람(07:00)까지 시스템 알람으로 등록
+      // (네이티브는 취소 후 재등록이라 반복 호출해도 안전)
+      if (isNativeApp()) {
+        nativeSyncAlarms(getAlarms());
+      }
       router.push("/home");
     } catch {
       fail("네트워크 연결을 확인한 뒤 다시 시도해주세요.");

@@ -16,6 +16,7 @@ import {
   loadData,
   flushOutbox,
   applyRemoteReset,
+  getAlarms,
   isWakeEMADue,
   isOSTRCDue,
   isMonday,
@@ -23,6 +24,7 @@ import {
   todayStr,
   mondayOf,
 } from "@/store/studyStore";
+import { isNativeApp, nativeSyncAlarms } from "@/lib/native";
 import { useMounted } from "@/hooks/useMounted";
 
 const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -56,6 +58,14 @@ function HomeInner() {
     const onOnline = () => void flushOutbox();
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
+  }, []);
+
+  // 네이티브 알람 재동기화 — 웹 저장소의 알람 목록이 항상 시스템 알람과 일치하도록
+  // (취소 후 재등록이라 멱등. 앱 재설치로 네이티브 목록만 사라진 경우도 복구)
+  useEffect(() => {
+    if (isNativeApp() && loadData().settings.participantCode) {
+      nativeSyncAlarms(getAlarms());
+    }
   }, []);
 
   // 관리자 원격 초기화 확인: 서버 reset_at이 갱신됐으면 로컬 기록을 비우고 새로 시작
