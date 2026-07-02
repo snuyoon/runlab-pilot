@@ -22,7 +22,7 @@ export interface StudySettings {
   bedtimeMinute: number;
 }
 
-/** 기상 직후 EMA 응답 (1~5점) */
+/** 기상 직후 EMA 응답 (1~10점 드래그) */
 export interface WakeEMA {
   id: string;
   date: string; // YYYY-MM-DD
@@ -163,6 +163,7 @@ export function saveSettings(patch: Partial<StudySettings>) {
 export function resetAll() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem("runlab-ostrc-draft-v1"); // OSTRC 작성 중 초안도 함께 삭제
 }
 
 export function makeId(): string {

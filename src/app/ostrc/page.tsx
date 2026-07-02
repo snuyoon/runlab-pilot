@@ -26,6 +26,7 @@ import {
   PriorProblem,
 } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
+import { SnapSlider } from "@/components/sliders";
 import {
   OSTRC_INTRO,
   OSTRC_CORE,
@@ -383,22 +384,21 @@ function OSTRCInner() {
                 />
               ))}
             </div>
-            <div className="text-base font-semibold text-slate-800 leading-snug mb-4">
+            <div className="text-base font-semibold text-slate-800 leading-snug mb-5">
               {OSTRC_CORE[coreIndex].text}
             </div>
-            <div className="flex flex-col gap-2.5">
-              {OSTRC_CORE[coreIndex].options.map((opt, i) => (
-                <OptionCard
-                  key={i}
-                  label={opt}
-                  selected={draft.core[coreIndex] === i}
-                  onClick={() => {
-                    const core = [...draft.core];
-                    core[coreIndex] = i;
-                    patch({ core });
-                  }}
-                />
-              ))}
+            {/* 드래그로 선택 — 공식 4개 선택지에 스냅 (검증된 척도 유지) */}
+            <div className="bg-white rounded-3xl p-5 shadow-sm">
+              <SnapSlider
+                key={`${problemNo}-${coreIndex}`}
+                options={OSTRC_CORE[coreIndex].options}
+                value={draft.core[coreIndex]}
+                onChange={(i) => {
+                  const core = [...draft.core];
+                  core[coreIndex] = i;
+                  patch({ core });
+                }}
+              />
             </div>
             <div className="flex-1" />
             <NextButton

@@ -208,10 +208,10 @@ function buildCSV(records: RecordRow[]): string {
 
 // ─── 상세 보기 표시 유틸 ────────────────────────────────────
 
-/** 1~5 응답값 색상 (낮을수록 나쁨 기준) */
-function chip5(v: number): string {
-  if (v <= 2) return "bg-red-100 text-red-600";
-  if (v === 3) return "bg-amber-100 text-amber-700";
+/** 1~10 응답값 색상 (낮을수록 나쁨 기준) */
+function chip10(v: number): string {
+  if (v <= 4) return "bg-red-100 text-red-600";
+  if (v <= 6) return "bg-amber-100 text-amber-700";
   return "bg-emerald-100 text-emerald-700";
 }
 
@@ -653,7 +653,7 @@ function AdminInner() {
               <div className="grid lg:grid-cols-2 gap-8">
                 <section>
                   <h3 className="text-sm font-bold text-slate-700 mb-3">
-                    ☀️ 기상 설문 <span className="font-normal text-slate-400">(최근 14일 · 1~5점)</span>
+                    ☀️ 기상 설문 <span className="font-normal text-slate-400">(최근 14일 · 1~10점)</span>
                   </h3>
                   {sel.emas.length === 0 ? (
                     <p className="text-sm text-slate-300">기록 없음</p>
@@ -676,7 +676,7 @@ function AdminInner() {
                               <td className="py-2 text-slate-600">{e.date.slice(5).replace("-", "/")}</td>
                               {[e.sleepQuality, e.fatigue, e.mood].map((v, j) => (
                                 <td key={j} className="text-center py-1.5">
-                                  <span className={`inline-block w-8 py-0.5 rounded-lg text-xs font-bold ${chip5(v)}`}>
+                                  <span className={`inline-block w-8 py-0.5 rounded-lg text-xs font-bold ${chip10(v)}`}>
                                     {v}
                                   </span>
                                 </td>
