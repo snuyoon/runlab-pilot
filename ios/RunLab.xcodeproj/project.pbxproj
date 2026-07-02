@@ -10,20 +10,28 @@
 		057E997D78557C8DAEBE8975 /* RunLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 467D5488951BF47B2E5790E8 /* RunLabApp.swift */; };
 		2186F3A1583B5C5E8E470261 /* WebShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A601772123B227CF5EC8C9 /* WebShellView.swift */; };
 		2C4E1EB69BCDF4A58B7A74CD /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 827E99B4703013BEC5653E3C /* ContentView.swift */; };
+		53D69B712E2F12233B43A293 /* bell.caf in Resources */ = {isa = PBXBuildFile; fileRef = CD877D04D3116B0180760227 /* bell.caf */; };
 		5EC52325FCA31ECE8AD553EC /* AlarmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50D1FA7C462E85110A722023 /* AlarmService.swift */; };
 		7C5123C61148AD419F6BE4B5 /* OpenSurveyIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37405C0C4B27A12ED39DA4EC /* OpenSurveyIntent.swift */; };
+		863B89BE328AD5FEE315E685 /* radar.caf in Resources */ = {isa = PBXBuildFile; fileRef = 55BE3123FDD8B98DE34ED404 /* radar.caf */; };
+		A0493F681B685B4C63A96E70 /* digital.caf in Resources */ = {isa = PBXBuildFile; fileRef = 34BC9D790BB466224ABA61D9 /* digital.caf */; };
 		B9B01902D0D327C76AF8A72F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9FD10221535483379459401B /* Assets.xcassets */; };
+		C78E32AD1893662A36D221CA /* chime.caf in Resources */ = {isa = PBXBuildFile; fileRef = 0BC906172B4E8622C416F5FC /* chime.caf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0BC906172B4E8622C416F5FC /* chime.caf */ = {isa = PBXFileReference; path = chime.caf; sourceTree = "<group>"; };
 		2A475E6F8EA4C4B25F854BA8 /* RunLab.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RunLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		34BC9D790BB466224ABA61D9 /* digital.caf */ = {isa = PBXFileReference; path = digital.caf; sourceTree = "<group>"; };
 		37405C0C4B27A12ED39DA4EC /* OpenSurveyIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenSurveyIntent.swift; sourceTree = "<group>"; };
 		467D5488951BF47B2E5790E8 /* RunLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLabApp.swift; sourceTree = "<group>"; };
 		50D1FA7C462E85110A722023 /* AlarmService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlarmService.swift; sourceTree = "<group>"; };
 		54A601772123B227CF5EC8C9 /* WebShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebShellView.swift; sourceTree = "<group>"; };
+		55BE3123FDD8B98DE34ED404 /* radar.caf */ = {isa = PBXFileReference; path = radar.caf; sourceTree = "<group>"; };
 		827E99B4703013BEC5653E3C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		9FD10221535483379459401B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A5A93E0CE757EB07DBF175A9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CD877D04D3116B0180760227 /* bell.caf */ = {isa = PBXFileReference; path = bell.caf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -60,9 +68,21 @@
 			children = (
 				9FD10221535483379459401B /* Assets.xcassets */,
 				A5A93E0CE757EB07DBF175A9 /* Info.plist */,
+				92354E2C0CD2C4AC95126A68 /* Sounds */,
 				5A3F97015884734CA130EC1C /* Sources */,
 			);
 			path = RunLab;
+			sourceTree = "<group>";
+		};
+		92354E2C0CD2C4AC95126A68 /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				CD877D04D3116B0180760227 /* bell.caf */,
+				0BC906172B4E8622C416F5FC /* chime.caf */,
+				34BC9D790BB466224ABA61D9 /* digital.caf */,
+				55BE3123FDD8B98DE34ED404 /* radar.caf */,
+			);
+			path = Sounds;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -96,6 +116,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					85A5027BF5826FE64F86AA1D = {
+						DevelopmentTeam = C9UCX4Z9RZ;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -125,6 +146,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				B9B01902D0D327C76AF8A72F /* Assets.xcassets in Resources */,
+				53D69B712E2F12233B43A293 /* bell.caf in Resources */,
+				C78E32AD1893662A36D221CA /* chime.caf in Resources */,
+				A0493F681B685B4C63A96E70 /* digital.caf in Resources */,
+				863B89BE328AD5FEE315E685 /* radar.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -153,6 +178,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C9UCX4Z9RZ;
 				INFOPLIST_FILE = RunLab/Info.plist;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -294,6 +320,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = C9UCX4Z9RZ;
 				INFOPLIST_FILE = RunLab/Info.plist;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;

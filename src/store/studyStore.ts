@@ -11,15 +11,50 @@
 
 // ─── 타입 정의 ─────────────────────────────────────────────
 
+/** 알람 소리 (네이티브 앱에 번들된 사운드 id) */
+export type AlarmSound = "default" | "radar" | "chime" | "bell" | "digital";
+/** 진동 세기 */
+export type AlarmVibration = "off" | "normal" | "strong";
+
+export const ALARM_SOUNDS: { id: AlarmSound; label: string }[] = [
+  { id: "default", label: "기본음" },
+  { id: "radar", label: "레이더" },
+  { id: "chime", label: "차임" },
+  { id: "bell", label: "종소리" },
+  { id: "digital", label: "디지털" },
+];
+
+export const ALARM_VIBRATIONS: { id: AlarmVibration; label: string }[] = [
+  { id: "off", label: "진동 없음" },
+  { id: "normal", label: "보통" },
+  { id: "strong", label: "강하게" },
+];
+
+/** 알람 1개 (기본 시계 앱처럼 여러 개 등록·개별 on/off) */
+export interface AlarmItem {
+  id: string;
+  hour: number;
+  minute: number;
+  label: string;
+  enabled: boolean;
+  sound: AlarmSound;
+  vibration: AlarmVibration;
+  days: number[]; // 1=월 ~ 7=일. 빈 배열 = 매일
+  /** 기상 알람 여부 — true면 알람을 끄면 기상 설문이 자동으로 뜬다 */
+  isWake: boolean;
+}
+
 /** 참여자 및 알람 설정 */
 export interface StudySettings {
   participantCode: string; // 연구 참여 코드 (예: SNU-01-8XKQ)
   participantLabel: string; // 서버에 등록된 참여자 라벨 (오입력 확인용)
   enrolledAt: string; // 최초 로그인 시각 (ISO)
   lastResetAck: string; // 마지막으로 반영한 서버 원격 초기화 시각 (reset_at)
+  alarms: AlarmItem[]; // 알람 목록 (기본 시계 앱 방식)
+  // 하위 호환 — 예전 단일 알람 필드 (마이그레이션용, sleep/ema에서 대표 기상 알람 참조)
   alarmHour: number;
   alarmMinute: number;
-  alarmEnabled: boolean; // 꺼짐: 알람 없이 참여 (기상 후 직접 설문)
+  alarmEnabled: boolean;
   bedtimeHour: number;
   bedtimeMinute: number;
 }
@@ -117,12 +152,29 @@ export interface StudyData {
 
 const STORAGE_KEY = "runlab-pilot-v1";
 
+function defaultAlarms(): AlarmItem[] {
+  return [
+    {
+      id: "wake",
+      hour: 7,
+      minute: 0,
+      label: "기상 알람",
+      enabled: true,
+      sound: "default",
+      vibration: "normal",
+      days: [], // 매일
+      isWake: true,
+    },
+  ];
+}
+
 const defaultData: StudyData = {
   settings: {
     participantCode: "",
     participantLabel: "",
     enrolledAt: "",
     lastResetAck: "",
+    alarms: defaultAlarms(),
     alarmHour: 7,
     alarmMinute: 0,
     alarmEnabled: true,
@@ -142,10 +194,27 @@ export function loadData(): StudyData {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
+      const settings = { ...defaultData.settings, ...parsed.settings };
+      // 마이그레이션: 예전 단일 알람 → alarms 배열
+      if (!Array.isArray(settings.alarms) || settings.alarms.length === 0) {
+        settings.alarms = [
+          {
+            id: "wake",
+            hour: settings.alarmHour ?? 7,
+            minute: settings.alarmMinute ?? 0,
+            label: "기상 알람",
+            enabled: settings.alarmEnabled ?? true,
+            sound: "default",
+            vibration: "normal",
+            days: [],
+            isWake: true,
+          },
+        ];
+      }
       return {
         ...defaultData,
         ...parsed,
-        settings: { ...defaultData.settings, ...parsed.settings },
+        settings,
         outbox: parsed.outbox ?? [],
       };
     }
@@ -161,6 +230,30 @@ function persist(data: StudyData) {
 export function saveSettings(patch: Partial<StudySettings>) {
   const data = loadData();
   data.settings = { ...data.settings, ...patch };
+  persist(data);
+}
+
+// ─── 알람 목록 관리 ─────────────────────────────────────────
+
+export function getAlarms(): AlarmItem[] {
+  return loadData().settings.alarms;
+}
+
+/** 대표 기상 알람 (sleep/ema 등 기존 화면 참조용) */
+export function wakeAlarm(data: StudyData = loadData()): AlarmItem | null {
+  return data.settings.alarms.find((a) => a.isWake) ?? data.settings.alarms[0] ?? null;
+}
+
+/** 알람 목록 저장 + 대표 기상 알람을 구필드에 동기화 (하위 호환) */
+export function saveAlarms(alarms: AlarmItem[]) {
+  const data = loadData();
+  data.settings.alarms = alarms;
+  const wake = alarms.find((a) => a.isWake) ?? alarms[0];
+  if (wake) {
+    data.settings.alarmHour = wake.hour;
+    data.settings.alarmMinute = wake.minute;
+    data.settings.alarmEnabled = wake.enabled;
+  }
   persist(data);
 }
 

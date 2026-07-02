@@ -1,13 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, saveSettings, applyRemoteReset } from "@/store/studyStore";
 import { isNativeApp, nativeCancelAlarm, nativeSetParticipant } from "@/lib/native";
+import { useMounted } from "@/hooks/useMounted";
 
 export default function LoginPage() {
+  const mounted = useMounted();
+  // localStorage는 클라이언트 전용 — 하이드레이션 후에만 로그인 여부 판정
+  if (!mounted) {
+    return <div className="mobile-frame bg-gradient-to-b from-emerald-50 to-sky-50" />;
+  }
+  return <LoginInner />;
+}
+
+function LoginInner() {
   const router = useRouter();
+  // 이미 로그인돼 있으면 로그인 폼을 건너뛰고 홈으로 (알람이 앱을 켰을 때
+  // 매번 재로그인하던 문제 해결). 네이티브 셸이 /ema 등으로 딥링크하면 그쪽이 우선.
+  const [loggedIn] = useState(() => loadData().settings.participantCode !== "");
+  useEffect(() => {
+    if (loggedIn) router.replace("/home");
+  }, [loggedIn, router]);
+
   const [code, setCode] = useState("");
   const [shaking, setShaking] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -68,6 +85,11 @@ export default function LoginPage() {
       setChecking(false);
     }
   };
+
+  if (loggedIn) {
+    // 홈으로 이동 중 — 폼 깜빡임 방지
+    return <div className="mobile-frame bg-gradient-to-b from-emerald-50 to-sky-50" />;
+  }
 
   return (
     <div className="mobile-frame flex flex-col items-center justify-center px-8 bg-gradient-to-b from-emerald-50 to-sky-50">

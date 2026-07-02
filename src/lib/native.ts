@@ -9,6 +9,8 @@
  * 일반 브라우저(Safari)에서는 기존 웹 알람(화면 켜둔 채 대기)으로 동작한다.
  */
 
+import type { AlarmItem } from "@/store/studyStore";
+
 interface RunlabMessageHandler {
   postMessage: (msg: unknown) => void;
 }
@@ -26,14 +28,30 @@ export function isNativeApp(): boolean {
   return handler() !== null;
 }
 
-/** 매일 반복 기상 알람 예약 (네이티브 AlarmKit) */
-export function nativeScheduleAlarm(hour: number, minute: number) {
-  handler()?.postMessage({ type: "scheduleAlarm", hour, minute });
+/**
+ * 알람 목록 전체를 네이티브에 동기화 (네이티브가 기존 알람 취소 후 재등록).
+ * 알람 추가/수정/삭제/토글 시마다 호출한다.
+ */
+export function nativeSyncAlarms(alarms: AlarmItem[]) {
+  handler()?.postMessage({
+    type: "syncAlarms",
+    alarms: alarms.map((a) => ({
+      id: a.id,
+      hour: a.hour,
+      minute: a.minute,
+      label: a.label,
+      enabled: a.enabled,
+      sound: a.sound,
+      vibration: a.vibration,
+      days: a.days,
+      isWake: a.isWake,
+    })),
+  });
 }
 
-/** 네이티브 알람 취소 */
+/** 모든 네이티브 알람 취소 (계정 전환 등) */
 export function nativeCancelAlarm() {
-  handler()?.postMessage({ type: "cancelAlarm" });
+  handler()?.postMessage({ type: "cancelAll" });
 }
 
 /** 네이티브 셸에 현재 참여 코드 전달 (진단/로그용) */

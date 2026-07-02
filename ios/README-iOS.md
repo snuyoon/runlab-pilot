@@ -29,16 +29,10 @@
 
 ## 빌드 방법
 
-1. **Xcode 26.x 필요** — AlarmKit은 iOS 26 SDK에만 있어서 Xcode 26 이상으로 빌드해야
-   한다 (Xcode 16.4는 이미 설치돼 있고 폴백 경로 빌드 검증까지 끝났지만, 16.4로 최종
-   빌드하면 AlarmKit이 빠진 앱이 됨). 이 Mac(macOS 15.3.2) 기준 두 경로 (2026-07 확인):
-   - **A. macOS 15.7.7 업데이트 (6GB, 마이너)** → Xcode **26.3** 설치 (Sequoia 15.6+에서
-     도는 마지막 26.x, iOS 26.2 SDK — AlarmKit 컴파일 가능). App Store가 26.3을 안 주면
-     developer.apple.com/download/all 에서 Xcode 26.3 xip 직접 다운로드.
-   - **B. macOS Tahoe 26.5.2 업그레이드 (10.5GB, 메이저)** → App Store 최신 Xcode 26.6.
-     (Xcode 26.4+는 Tahoe 26.2+ 필수)
-   설치 후 한 번 실행해 추가 컴포넌트(iOS 플랫폼) 설치.
-2. 프로젝트 열기:
+> ✅ **현재 이 Mac에서 빌드 검증 완료** (Xcode 26.6, iOS 26.5 SDK, AlarmKit 포함,
+> `xcodebuild ... -sdk iphonesimulator build` → BUILD SUCCEEDED). 별도 업그레이드 불필요.
+
+1. 프로젝트 열기:
    ```bash
    open ios/RunLab.xcodeproj
    ```

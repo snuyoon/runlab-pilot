@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, startSleepLog, finishSleepLog, isWakeEMADue } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
-import { isNativeApp, nativeScheduleAlarm, nativeCancelAlarm } from "@/lib/native";
+import { isNativeApp } from "@/lib/native";
 
 type Phase = "bedtime" | "sleeping" | "alarm" | "dismiss";
 
@@ -120,13 +120,13 @@ function SleepInner() {
 
   // ── 페이즈 전환 ──
   const startSleep = useCallback(() => {
-    if (!alarmEnabled) {
-      // 알람 꺼짐: 예약 없이 수면만 기록. 남아있을 수 있는 시스템 알람도 정리
-      if (native) nativeCancelAlarm();
+    if (native) {
+      // 네이티브: 시스템 알람은 알람 화면에서 저장할 때 이미 예약됨.
+      // 취침 시작은 수면 로그만 기록하면 된다 (앱을 닫아도 알람이 울림).
       alarmTargetRef.current = 0;
-    } else if (native) {
-      // 시스템 알람 재확인 예약 — 앱이 종료돼도 울린다
-      nativeScheduleAlarm(settings.alarmHour, settings.alarmMinute);
+    } else if (!alarmEnabled) {
+      // 웹 · 알람 꺼짐: 예약 없이 수면만 기록
+      alarmTargetRef.current = 0;
     } else {
       // 웹: 사용자 제스처 안에서 AudioContext 준비 (iOS 사운드 정책)
       // 주의: resume()을 await하면 정책에 막혔을 때 프로미스가 안 풀려

@@ -50,7 +50,15 @@ struct WebShellView: UIViewRepresentable {
         )
         webView.scrollView.refreshControl = refresh
 
-        webView.load(URLRequest(url: Self.baseURL))
+        // 콜드 런치 딥링크: 알람으로 앱이 켜졌으면 처음부터 해당 경로(/ema)를 로드
+        // (베이스 URL을 먼저 로드했다가 리다이렉트하는 레이스 방지)
+        var startURL = Self.baseURL
+        if let pending = UserDefaults.standard.string(forKey: WebRouter.pendingPathKey) {
+            UserDefaults.standard.removeObject(forKey: WebRouter.pendingPathKey)
+            startURL = Self.baseURL.appendingPathComponent(pending)
+            context.coordinator.lastHandledPath = pending
+        }
+        webView.load(URLRequest(url: startURL))
         return webView
     }
 
@@ -92,11 +100,11 @@ struct WebShellView: UIViewRepresentable {
                   let type = body["type"] as? String else { return }
 
             switch type {
-            case "scheduleAlarm":
-                let hour = (body["hour"] as? NSNumber)?.intValue ?? 7
-                let minute = (body["minute"] as? NSNumber)?.intValue ?? 0
-                AlarmService.scheduleDaily(hour: hour, minute: minute)
-            case "cancelAlarm":
+            case "syncAlarms":
+                let raw = (body["alarms"] as? [[String: Any]]) ?? []
+                let specs = raw.compactMap { AlarmSpec($0) }
+                AlarmService.sync(specs)
+            case "cancelAll":
                 AlarmService.cancelAll()
             case "setParticipant":
                 if let code = body["code"] as? String {

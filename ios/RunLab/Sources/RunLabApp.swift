@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         if response.notification.request.identifier.hasPrefix(AlarmService.legacyIDPrefix) {
+            // 콜드 런치 대비: UserDefaults에도 남겨 makeUIView가 처음부터 /ema를 로드하도록
+            UserDefaults.standard.set("/ema", forKey: WebRouter.pendingPathKey)
             Task { @MainActor in
                 WebRouter.shared.open("/ema")
             }
