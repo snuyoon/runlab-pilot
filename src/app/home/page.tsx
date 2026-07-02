@@ -231,7 +231,9 @@ function HomeInner() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="text-indigo-200 text-xs mb-1">기상 알람</div>
-            <div className="text-3xl font-bold tabular-nums">{alarmTime}</div>
+            <div className="text-3xl font-bold tabular-nums">
+              {data.settings.alarmEnabled ? alarmTime : "꺼짐"}
+            </div>
           </div>
           <button
             onClick={() => router.push("/alarm")}

@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, startSleepLog, finishSleepLog, isWakeEMADue } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
-import { isNativeApp, nativeScheduleAlarm } from "@/lib/native";
+import { isNativeApp, nativeScheduleAlarm, nativeCancelAlarm } from "@/lib/native";
 
 type Phase = "bedtime" | "sleeping" | "alarm" | "dismiss";
 
@@ -53,6 +53,7 @@ function SleepInner() {
   }, [phase]);
 
   const alarmTime = `${String(settings.alarmHour).padStart(2, "0")}:${String(settings.alarmMinute).padStart(2, "0")}`;
+  const alarmEnabled = settings.alarmEnabled;
 
   // ── 알람음 (WebAudio 비프음 루프) ──
   const beep = useCallback(() => {
@@ -119,7 +120,11 @@ function SleepInner() {
 
   // ── 페이즈 전환 ──
   const startSleep = useCallback(() => {
-    if (native) {
+    if (!alarmEnabled) {
+      // 알람 꺼짐: 예약 없이 수면만 기록. 남아있을 수 있는 시스템 알람도 정리
+      if (native) nativeCancelAlarm();
+      alarmTargetRef.current = 0;
+    } else if (native) {
       // 시스템 알람 재확인 예약 — 앱이 종료돼도 울린다
       nativeScheduleAlarm(settings.alarmHour, settings.alarmMinute);
     } else {
@@ -144,7 +149,7 @@ function SleepInner() {
     sleepLogIdRef.current = startSleepLog();
     alarmFiredRef.current = false;
     setPhase("sleeping");
-  }, [native, requestWakeLock, settings.alarmHour, settings.alarmMinute]);
+  }, [native, alarmEnabled, requestWakeLock, settings.alarmHour, settings.alarmMinute]);
 
   const triggerAlarm = useCallback(() => {
     setPhase("alarm");
@@ -188,6 +193,8 @@ function SleepInner() {
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (
+        !native &&
+        alarmEnabled && // 웹 알람이 있을 때만 화면 켜둠이 필요
         (phaseRef.current === "sleeping" || phaseRef.current === "alarm") &&
         !wakeLockRef.current
       ) {
@@ -201,7 +208,7 @@ function SleepInner() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [requestWakeLock, doTick]);
+  }, [native, alarmEnabled, requestWakeLock, doTick]);
 
   // 페이지 이탈 시 정리
   useEffect(() => {
@@ -253,17 +260,33 @@ function SleepInner() {
 
               <div className="bg-white/10 rounded-2xl p-4 mb-3 backdrop-blur">
                 <div className="flex items-center gap-3">
-                  <span className="text-3xl">⏰</span>
+                  <span className="text-3xl">{alarmEnabled ? "⏰" : "🔕"}</span>
                   <div className="text-left">
-                    <div className="font-semibold text-sm">기상 알람 {alarmTime}</div>
+                    <div className="font-semibold text-sm">
+                      {alarmEnabled ? `기상 알람 ${alarmTime}` : "기상 알람 꺼짐"}
+                    </div>
                     <div className="text-xs text-indigo-300">
-                      알람이 울리면 밀어서 끄고, 바로 설문이 열려요
+                      {alarmEnabled
+                        ? "알람이 울리면 밀어서 끄고, 바로 설문이 열려요"
+                        : "아침에 직접 앱을 열어 기상 설문을 진행해주세요"}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {native ? (
+              {!alarmEnabled ? (
+                <div className="bg-white/10 border border-white/15 rounded-2xl p-4 mb-8">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">💤</span>
+                    <div className="text-left">
+                      <div className="font-semibold text-sm text-indigo-100">알람 없이 수면 기록</div>
+                      <div className="text-xs text-indigo-300 leading-relaxed">
+                        알람이 울리지 않아요. 다시 켜려면 알람 설정에서 스위치를 켜주세요.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : native ? (
                 <div className="bg-emerald-400/15 border border-emerald-300/30 rounded-2xl p-4 mb-8">
                   <div className="flex items-center gap-3">
                     <span className="text-3xl">✅</span>
@@ -353,16 +376,33 @@ function SleepInner() {
               </div>
 
               <p className="text-white/30 text-sm mb-2">수면 중...</p>
-              <p className="text-white/20 text-xs">알람: {alarmTime}</p>
-              {native && (
+              <p className="text-white/20 text-xs">
+                알람: {alarmEnabled ? alarmTime : "꺼짐"}
+              </p>
+              {native && alarmEnabled && (
                 <p className="text-emerald-300/60 text-xs mt-3">
                   시스템 알람 예약됨 — 앱을 닫아도 좋아요
                 </p>
               )}
             </motion.div>
 
+            {/* 알람 꺼짐: 알람 페이즈가 없으므로 직접 기상 종료 */}
+            {!alarmEnabled && (
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1 }}
+                onClick={dismissAlarm}
+                className="mt-12 px-8 py-3.5 rounded-full text-sm font-semibold
+                  bg-white/15 text-white/80 border border-white/15"
+                whileTap={{ scale: 0.95 }}
+              >
+                ☀️ 기상하기
+              </motion.button>
+            )}
+
             {/* 파일럿 테스트용: 즉시 알람 (웹 전용 — 네이티브는 시스템 알람 사용) */}
-            {!native && (
+            {!native && alarmEnabled && (
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

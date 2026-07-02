@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, saveSettings } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
-import { isNativeApp, nativeScheduleAlarm } from "@/lib/native";
+import { isNativeApp, nativeScheduleAlarm, nativeCancelAlarm } from "@/lib/native";
 
 function TimeWheel({
   label,
@@ -60,6 +60,7 @@ function AlarmInner() {
   const [settings] = useState(() => loadData().settings);
   const [alarmH, setAlarmH] = useState(settings.alarmHour);
   const [alarmM, setAlarmM] = useState(settings.alarmMinute);
+  const [alarmOn, setAlarmOn] = useState(settings.alarmEnabled);
   const [bedH, setBedH] = useState(settings.bedtimeHour);
   const [bedM, setBedM] = useState(settings.bedtimeMinute);
   const [saved, setSaved] = useState(false);
@@ -68,12 +69,17 @@ function AlarmInner() {
     saveSettings({
       alarmHour: alarmH,
       alarmMinute: alarmM,
+      alarmEnabled: alarmOn,
       bedtimeHour: bedH,
       bedtimeMinute: bedM,
     });
-    // 네이티브 앱이면 시스템 알람(AlarmKit)에 즉시 등록 — 앱이 꺼져도 울림
+    // 네이티브 앱이면 시스템 알람(AlarmKit)에 즉시 반영 — 앱이 꺼져도 울림/멈춤
     if (isNativeApp()) {
-      nativeScheduleAlarm(alarmH, alarmM);
+      if (alarmOn) {
+        nativeScheduleAlarm(alarmH, alarmM);
+      } else {
+        nativeCancelAlarm();
+      }
     }
     setSaved(true);
     setTimeout(() => router.push("/home"), 800);
@@ -98,16 +104,36 @@ function AlarmInner() {
         animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-3xl p-6 shadow-sm mb-4"
       >
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-3xl">⏰</span>
-          <div>
-            <div className="font-semibold text-slate-800">기상 알람</div>
-            <div className="text-xs text-slate-500">
-              알람이 울리면 EMA 설문이 자동으로 열려요
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">⏰</span>
+            <div>
+              <div className="font-semibold text-slate-800">기상 알람</div>
+              <div className="text-xs text-slate-500">
+                {alarmOn
+                  ? "알람이 울리면 EMA 설문이 자동으로 열려요"
+                  : "알람 없이 참여 — 기상 후 직접 설문을 열어주세요"}
+              </div>
             </div>
           </div>
+          <button
+            role="switch"
+            aria-checked={alarmOn}
+            aria-label="기상 알람 켜기/끄기"
+            onClick={() => setAlarmOn((v) => !v)}
+            className={`relative w-[52px] h-8 rounded-full shrink-0 transition-colors duration-200
+              ${alarmOn ? "bg-indigo-500" : "bg-slate-300"}`}
+          >
+            <span
+              className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-all duration-200
+                ${alarmOn ? "left-6" : "left-1"}`}
+            />
+          </button>
         </div>
-        <div className="flex items-center justify-center gap-4">
+        <div
+          className={`flex items-center justify-center gap-4 transition-opacity duration-200
+            ${alarmOn ? "" : "opacity-35 pointer-events-none select-none"}`}
+        >
           <TimeWheel label="시" value={alarmH} onChange={setAlarmH} max={23} />
           <span className="text-4xl font-bold text-slate-300 mt-4">:</span>
           <TimeWheel label="분" value={alarmM} onChange={setAlarmM} max={59} />

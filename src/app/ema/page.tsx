@@ -16,7 +16,6 @@ import {
 } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
 import { ScaleSlider } from "@/components/sliders";
-import { isNativeApp } from "@/lib/native";
 
 interface Question {
   id: "sleepQuality" | "fatigue" | "mood";
@@ -62,8 +61,9 @@ function EMAInner() {
   const [submitted, setSubmitted] = useState(false);
   // 오늘 이미 완료했으면 중복 제출 차단 (직접 URL 진입, 뒤로가기 등)
   const [alreadyDone] = useState(() => {
-    // 네이티브: 시스템 알람 해제 후 설문이 열리는 시점 = 기상 → 수면 로그 마감
-    if (isNativeApp()) finishLatestOpenSleepLog();
+    // 기상 설문 진입 시점 = 기상 → 열려 있는 수면 로그 마감
+    // (네이티브 시스템 알람 해제 후, 또는 알람 꺼짐 상태에서 직접 진입한 경우)
+    finishLatestOpenSleepLog();
     return !isWakeEMADue();
   });
 

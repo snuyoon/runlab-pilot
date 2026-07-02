@@ -19,6 +19,7 @@ export interface StudySettings {
   lastResetAck: string; // 마지막으로 반영한 서버 원격 초기화 시각 (reset_at)
   alarmHour: number;
   alarmMinute: number;
+  alarmEnabled: boolean; // 꺼짐: 알람 없이 참여 (기상 후 직접 설문)
   bedtimeHour: number;
   bedtimeMinute: number;
 }
@@ -124,6 +125,7 @@ const defaultData: StudyData = {
     lastResetAck: "",
     alarmHour: 7,
     alarmMinute: 0,
+    alarmEnabled: true,
     bedtimeHour: 23,
     bedtimeMinute: 0,
   },
