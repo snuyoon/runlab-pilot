@@ -292,6 +292,23 @@ export function startSleepLog(): string {
   return id;
 }
 
+/**
+ * 미완료 수면 로그 마감 (네이티브 앱용):
+ * 시스템 알람은 앱 밖에서 울리므로, 알람 해제 후 설문이 열리는 시점에
+ * 24시간 내 시작된 미완료 수면 로그를 기상으로 마감한다.
+ */
+export function finishLatestOpenSleepLog() {
+  const data = loadData();
+  const open = [...data.sleepLogs]
+    .reverse()
+    .find(
+      (l) =>
+        l.alarmDismissedAt === null &&
+        Date.now() - new Date(l.bedtimeAt).getTime() < 24 * 3600000
+    );
+  if (open) finishSleepLog(open.id);
+}
+
 /** 알람 해제 시각 기록 후 서버 전송 큐에 추가 */
 export function finishSleepLog(id: string) {
   const data = loadData();

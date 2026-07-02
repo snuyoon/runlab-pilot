@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, saveSettings } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
+import { isNativeApp, nativeScheduleAlarm } from "@/lib/native";
 
 function TimeWheel({
   label,
@@ -70,6 +71,10 @@ function AlarmInner() {
       bedtimeHour: bedH,
       bedtimeMinute: bedM,
     });
+    // 네이티브 앱이면 시스템 알람(AlarmKit)에 즉시 등록 — 앱이 꺼져도 울림
+    if (isNativeApp()) {
+      nativeScheduleAlarm(alarmH, alarmM);
+    }
     setSaved(true);
     setTimeout(() => router.push("/home"), 800);
   };

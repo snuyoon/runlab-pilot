@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, startSleepLog, finishSleepLog, isWakeEMADue } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
+import { isNativeApp, nativeScheduleAlarm } from "@/lib/native";
 
 type Phase = "bedtime" | "sleeping" | "alarm" | "dismiss";
 
@@ -29,6 +30,8 @@ function SleepInner() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("bedtime");
   const [settings] = useState(() => loadData().settings);
+  // 네이티브 셸: 알람은 시스템(AlarmKit)이 담당 — 화면 켜둘 필요 없음
+  const [native] = useState(() => isNativeApp());
   const [currentTime, setCurrentTime] = useState(() => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -116,27 +119,32 @@ function SleepInner() {
 
   // ── 페이즈 전환 ──
   const startSleep = useCallback(() => {
-    // 사용자 제스처 안에서 AudioContext 준비 (iOS 사운드 정책)
-    // 주의: resume()을 await하면 정책에 막혔을 때 프로미스가 안 풀려
-    // 버튼이 먹통이 되므로 화면 전환을 막지 않게 fire-and-forget으로 처리
-    try {
-      type AudioCtxCtor = typeof AudioContext;
-      const Ctor: AudioCtxCtor =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext: AudioCtxCtor }).webkitAudioContext;
-      audioCtxRef.current = audioCtxRef.current ?? new Ctor();
-      audioCtxRef.current.resume().catch(() => {});
-    } catch {}
-    requestWakeLock();
-    // 알람 목표 시각: 이미 지난 시각이면 내일
-    const t = new Date();
-    t.setHours(settings.alarmHour, settings.alarmMinute, 0, 0);
-    if (t.getTime() <= Date.now()) t.setDate(t.getDate() + 1);
-    alarmTargetRef.current = t.getTime();
+    if (native) {
+      // 시스템 알람 재확인 예약 — 앱이 종료돼도 울린다
+      nativeScheduleAlarm(settings.alarmHour, settings.alarmMinute);
+    } else {
+      // 웹: 사용자 제스처 안에서 AudioContext 준비 (iOS 사운드 정책)
+      // 주의: resume()을 await하면 정책에 막혔을 때 프로미스가 안 풀려
+      // 버튼이 먹통이 되므로 화면 전환을 막지 않게 fire-and-forget으로 처리
+      try {
+        type AudioCtxCtor = typeof AudioContext;
+        const Ctor: AudioCtxCtor =
+          window.AudioContext ??
+          (window as unknown as { webkitAudioContext: AudioCtxCtor }).webkitAudioContext;
+        audioCtxRef.current = audioCtxRef.current ?? new Ctor();
+        audioCtxRef.current.resume().catch(() => {});
+      } catch {}
+      requestWakeLock();
+      // 알람 목표 시각: 이미 지난 시각이면 내일
+      const t = new Date();
+      t.setHours(settings.alarmHour, settings.alarmMinute, 0, 0);
+      if (t.getTime() <= Date.now()) t.setDate(t.getDate() + 1);
+      alarmTargetRef.current = t.getTime();
+    }
     sleepLogIdRef.current = startSleepLog();
     alarmFiredRef.current = false;
     setPhase("sleeping");
-  }, [requestWakeLock, settings.alarmHour, settings.alarmMinute]);
+  }, [native, requestWakeLock, settings.alarmHour, settings.alarmMinute]);
 
   const triggerAlarm = useCallback(() => {
     setPhase("alarm");
@@ -159,6 +167,7 @@ function SleepInner() {
       `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
     );
     if (
+      !native && // 네이티브에선 시스템 알람이 담당
       phaseRef.current === "sleeping" &&
       !alarmFiredRef.current &&
       alarmTargetRef.current > 0 &&
@@ -167,7 +176,7 @@ function SleepInner() {
       alarmFiredRef.current = true;
       triggerAlarm();
     }
-  }, [triggerAlarm]);
+  }, [native, triggerAlarm]);
 
   useEffect(() => {
     const interval = setInterval(doTick, 1000);
@@ -254,18 +263,33 @@ function SleepInner() {
                 </div>
               </div>
 
-              <div className="bg-amber-400/15 border border-amber-300/30 rounded-2xl p-4 mb-8">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">🔌</span>
-                  <div className="text-left">
-                    <div className="font-semibold text-sm text-amber-200">중요</div>
-                    <div className="text-xs text-amber-200/80 leading-relaxed">
-                      충전기에 연결하고, 이 화면을 켜 둔 채로 머리맡에 두세요.
-                      화면이 꺼지면 알람이 울리지 않아요.
+              {native ? (
+                <div className="bg-emerald-400/15 border border-emerald-300/30 rounded-2xl p-4 mb-8">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">✅</span>
+                    <div className="text-left">
+                      <div className="font-semibold text-sm text-emerald-200">시스템 알람 예약</div>
+                      <div className="text-xs text-emerald-200/80 leading-relaxed">
+                        앱을 닫거나 화면이 꺼져 있어도 알람이 울려요.
+                        무음 모드에서도 소리가 납니다.
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-amber-400/15 border border-amber-300/30 rounded-2xl p-4 mb-8">
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl">🔌</span>
+                    <div className="text-left">
+                      <div className="font-semibold text-sm text-amber-200">중요</div>
+                      <div className="text-xs text-amber-200/80 leading-relaxed">
+                        충전기에 연결하고, 이 화면을 켜 둔 채로 머리맡에 두세요.
+                        화면이 꺼지면 알람이 울리지 않아요.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
 
             <motion.button
@@ -330,23 +354,30 @@ function SleepInner() {
 
               <p className="text-white/30 text-sm mb-2">수면 중...</p>
               <p className="text-white/20 text-xs">알람: {alarmTime}</p>
+              {native && (
+                <p className="text-emerald-300/60 text-xs mt-3">
+                  시스템 알람 예약됨 — 앱을 닫아도 좋아요
+                </p>
+              )}
             </motion.div>
 
-            {/* 파일럿 테스트용: 즉시 알람 */}
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 2 }}
-              onClick={() => {
-                alarmFiredRef.current = true;
-                triggerAlarm();
-              }}
-              className="mt-12 px-6 py-3 rounded-full text-sm
-                bg-white/10 text-white/50 border border-white/10"
-              whileTap={{ scale: 0.95 }}
-            >
-              ⏩ 테스트: 알람 울리기
-            </motion.button>
+            {/* 파일럿 테스트용: 즉시 알람 (웹 전용 — 네이티브는 시스템 알람 사용) */}
+            {!native && (
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 2 }}
+                onClick={() => {
+                  alarmFiredRef.current = true;
+                  triggerAlarm();
+                }}
+                className="mt-12 px-6 py-3 rounded-full text-sm
+                  bg-white/10 text-white/50 border border-white/10"
+                whileTap={{ scale: 0.95 }}
+              >
+                ⏩ 테스트: 알람 울리기
+              </motion.button>
+            )}
           </motion.div>
         )}
 

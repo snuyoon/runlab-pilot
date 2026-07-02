@@ -8,9 +8,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { addWakeEMA, todayStr, isWakeEMADue } from "@/store/studyStore";
+import {
+  addWakeEMA,
+  todayStr,
+  isWakeEMADue,
+  finishLatestOpenSleepLog,
+} from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
 import { ScaleSlider } from "@/components/sliders";
+import { isNativeApp } from "@/lib/native";
 
 interface Question {
   id: "sleepQuality" | "fatigue" | "mood";
@@ -55,7 +61,11 @@ function EMAInner() {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
   // 오늘 이미 완료했으면 중복 제출 차단 (직접 URL 진입, 뒤로가기 등)
-  const [alreadyDone] = useState(() => !isWakeEMADue());
+  const [alreadyDone] = useState(() => {
+    // 네이티브: 시스템 알람 해제 후 설문이 열리는 시점 = 기상 → 수면 로그 마감
+    if (isNativeApp()) finishLatestOpenSleepLog();
+    return !isWakeEMADue();
+  });
 
   const allAnswered = questions.every((q) => answers[q.id] !== undefined);
 

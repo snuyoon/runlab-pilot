@@ -1,0 +1,33 @@
+# XcodeGen 프로젝트 정의 — `xcodegen generate` 실행 시 RunLab.xcodeproj 생성
+name: RunLab
+options:
+  bundleIdPrefix: com.snuyoon
+  deploymentTarget:
+    iOS: "18.0"
+targets:
+  RunLab:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: RunLab
+    info:
+      path: RunLab/Info.plist
+      properties:
+        CFBundleDisplayName: RunLab
+        # AlarmKit 필수 키 — 없으면 알람 예약 불가 (entitlement는 필요 없음)
+        NSAlarmKitUsageDescription: "설정하신 시각에 기상 알람을 울리기 위해 필요합니다."
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.snuyoon.runlab
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_UIUserInterfaceStyle: Light
