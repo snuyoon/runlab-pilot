@@ -264,6 +264,19 @@ function OSTRCInner() {
 
   const problemNo = problems.length + 1;
 
+  // ── 중복 보고 방지 (같은 세션 내) ──
+  // 정신 건강은 주간 배터리라 1회만. 부상/질병은 복수 허용하되(무릎+발목 등, OSTRC 원판의
+  // 문제 단위 반복) "같은 부위/증상군 재보고"만 차단. 반복 연결도 이미 쓴 루트는 제외.
+  const usedMental = problems.some((p) => p.type === "mental");
+  const usedBodyAreas = new Set(
+    problems.filter((p) => p.type === "injury" && p.bodyArea).map((p) => p.bodyArea as string)
+  );
+  const usedIllnessCats = new Set(
+    problems.filter((p) => p.type === "illness" && p.illnessCategory).map((p) => p.illnessCategory as string)
+  );
+  const usedRoots = new Set(problems.map((p) => p.recurrenceOfId).filter(Boolean) as string[]);
+  const availablePriors = priors.filter((p) => !usedRoots.has(p.rootId));
+
   if (!loggedIn) {
     return <div className="mobile-frame bg-blue-50" />;
   }
@@ -300,7 +313,7 @@ function OSTRCInner() {
 
   /** 핵심 문항 이후: 반복 문제 후보가 있으면 확인, 없으면 유형 분류로 */
   const toPrevOrClassify = () => {
-    go(priors.length > 0 ? "prev" : "q5");
+    go(availablePriors.length > 0 ? "prev" : "q5");
   };
 
   /** Q1 응답 후 게이트키퍼 분기 */
@@ -411,6 +424,17 @@ function OSTRCInner() {
               />
             </div>
             <div className="flex-1" />
+            {/* 잘못 진입한 반복 회차 탈출구 — "예(또 있음)"를 잘못 눌렀을 때
+                지금까지 완료한 문제들로 바로 제출 (Q1 응답과 무관하게 항상 노출) */}
+            {coreIndex === 0 && problems.length > 0 && (
+              <button
+                onClick={() => submit(problems)}
+                className="w-full py-3 mb-2 rounded-2xl text-sm font-semibold text-slate-500
+                  bg-white border-2 border-slate-200"
+              >
+                더 보고할 문제 없음 — 지금까지 응답 제출 ({problems.length}건)
+              </button>
+            )}
             <NextButton
               enabled={draft.core[coreIndex] !== null}
               onClick={() => {
@@ -440,7 +464,7 @@ function OSTRCInner() {
                   go("q5");
                 }}
               />
-              {priors.map((p) => (
+              {availablePriors.map((p) => (
                 <OptionCard
                   key={p.rootId}
                   label={p.label}
@@ -463,16 +487,23 @@ function OSTRCInner() {
               {OSTRC_Q5.text}
             </div>
             <div className="flex flex-col gap-2.5">
-              {OSTRC_Q5.options.map((opt) => (
-                <OptionCard
-                  key={opt.value}
-                  label={opt.label}
-                  description={opt.description}
-                  selected={draft.type === opt.value}
-                  onClick={() => patch({ type: opt.value })}
-                />
-              ))}
+              {OSTRC_Q5.options
+                .filter((opt) => !(opt.value === "mental" && usedMental))
+                .map((opt) => (
+                  <OptionCard
+                    key={opt.value}
+                    label={opt.label}
+                    description={opt.description}
+                    selected={draft.type === opt.value}
+                    onClick={() => patch({ type: opt.value })}
+                  />
+                ))}
             </div>
+            {usedMental && (
+              <p className="text-xs text-slate-400 mt-3">
+                정신 건강 문제는 이번 주에 이미 응답해서 제외됐어요.
+              </p>
+            )}
             <div className="flex-1" />
             <NextButton
               enabled={draft.type !== null}
@@ -492,7 +523,7 @@ function OSTRCInner() {
               부상을 입은 신체 부위 및 영역 범주
             </div>
             <div className="flex flex-col gap-2">
-              {OSTRC_BODY_AREAS.map((area) => (
+              {OSTRC_BODY_AREAS.filter((area) => !usedBodyAreas.has(area.label)).map((area) => (
                 <OptionCard
                   key={area.label}
                   label={area.label}
@@ -502,6 +533,11 @@ function OSTRCInner() {
                 />
               ))}
             </div>
+            {usedBodyAreas.size > 0 && (
+              <p className="text-xs text-slate-400 mt-3">
+                이번 주에 이미 보고한 부위는 목록에서 제외됐어요.
+              </p>
+            )}
             <NextButton enabled={draft.bodyArea !== null} onClick={finishClassification} />
           </div>
         )}
@@ -513,7 +549,7 @@ function OSTRCInner() {
               질병 증상군의 범주
             </div>
             <div className="flex flex-col gap-2">
-              {OSTRC_ILLNESS_CATEGORIES.map((cat) => (
+              {OSTRC_ILLNESS_CATEGORIES.filter((cat) => !usedIllnessCats.has(cat.label)).map((cat) => (
                 <OptionCard
                   key={cat.label}
                   label={cat.label}
@@ -523,6 +559,11 @@ function OSTRCInner() {
                 />
               ))}
             </div>
+            {usedIllnessCats.size > 0 && (
+              <p className="text-xs text-slate-400 mt-3">
+                이번 주에 이미 보고한 증상군은 목록에서 제외됐어요.
+              </p>
+            )}
             <NextButton enabled={draft.illnessCategory !== null} onClick={finishClassification} />
           </div>
         )}
