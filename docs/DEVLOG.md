@@ -5,7 +5,8 @@
 ## 현재 상태 한 줄 요약
 
 웹앱(설문·백엔드·관리자)과 iOS 네이티브 앱(AlarmKit 진짜 알람)까지 **개발·검증·배포 완료**.
-남은 것: **실기기 알람 최종 확인(사용자)**과 **TestFlight 배포(Apple Developer 등록 승인 대기 중)**.
+**TestFlight 첫 빌드(1.0/1) 베타 심사 제출 완료(2026-07-03) → `WAITING_FOR_REVIEW`.**
+남은 것: **심사 승인(~24~48h) 후 공개 링크 공유** + **실기기 알람 최종 발화 확인(사용자)**.
 
 ## 타임라인 (요약)
 
@@ -56,7 +57,8 @@
 ## 다음 할 일 (우선순위순)
 
 1. **실기기 알람 테스트** (사용자) — 체크리스트 3절. 소리/진동 피드백 받으면 조정.
-2. **TestFlight 배포** — Apple Developer Program 승인 대기 중(2026-07-03 여권 인증 제출). 승인되면: App Store Connect 앱 생성(`com.snuyoon.runlab`) → Xcode Archive → 외부 테스터 그룹 → 연구원 이메일 초대 (첫 빌드 베타 심사 24~48h). 승인 전 임시: 연구원 아이폰을 이 맥에 연결해 Xcode Run(무료 서명, 7일).
+2. **TestFlight 배포** — ✅ **제출 완료(2026-07-03)**. Apple Developer Program 승인됨(유료 팀 **C9UCX4Z9RZ** = sungjae yun, Apple ID uosyoon@naver.com). App Store Connect 앱 생성(App ID **6787020530**, `com.snuyoon.runlab`) → Release 아카이브·IPA export(배포서명 자동) → altool 업로드 → 외부 그룹 "연구원" + 빌드 1.0/1 배정 → What to Test·설명·심사노트(리뷰어 코드 **TEST-01**) → 베타 심사 제출(`WAITING_FOR_REVIEW`). **자동화는 App Store Connect API 키(.p8, `~/.appstoreconnect/private_keys/`, Issuer/Key ID)로 `scripts/asc.mjs` 없이 세션 스크립트로 수행** — 앱 레코드 생성만 API 불가라 브라우저 1회. **공개 링크: https://testflight.apple.com/join/xdug6rnD (한도 25)** — 승인 후 활성. 재업로드 시 빌드번호↑.
+   - ⚠️ **미확인**: 제출 빌드에 관측성(Logger·진단 emit)·폴백·기상알람 단일'끄기' 버튼 변경 포함. 실기기 **알람 실제 발화**는 아직 최종 확인 안 됨 — 심사 대기 중 dev 빌드(agua_claro)로 확인하고, 문제면 새 빌드 재업로드 후 연구원 공유.
 3. (선택) 신규 OSTRC 문제 보고 시 연구자 이메일/푸시 알림 — 노르웨이 프로그램 방식(즉시 알림)이 표준.
 4. (선택) iOS 웹푸시 또는 네이티브 로컬알림으로 월요일 OSTRC 리마인더.
 5. (보류) 가민 연동 — 위 의사결정 9 참조.
