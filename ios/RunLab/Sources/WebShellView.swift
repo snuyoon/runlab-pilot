@@ -41,6 +41,15 @@ struct WebShellView: UIViewRepresentable {
         webView.backgroundColor = UIColor(red: 0.97, green: 0.98, blue: 0.99, alpha: 1)
         context.coordinator.webView = webView
 
+        // 네이티브 알람 예약 결과를 웹으로 되돌리는 훅 — 예약 성공/실패를 /alarm 화면에서 보이게.
+        // (단방향 브리지라 지금까진 웹이 예약 성패를 전혀 몰랐다 → 무발화가 완전히 비가시였음)
+        AlarmService.onSyncResult = { [weak coordinator = context.coordinator] json in
+            coordinator?.webView?.evaluateJavaScript(
+                "window.__runlabAlarmResult && window.__runlabAlarmResult(\(json))",
+                completionHandler: nil
+            )
+        }
+
         // 당겨서 새로고침
         let refresh = UIRefreshControl()
         refresh.addTarget(
@@ -113,6 +122,13 @@ struct WebShellView: UIViewRepresentable {
                 AlarmService.sync(specs)
             case "cancelAll":
                 AlarmService.cancelAll()
+            case "getAlarmDiag":
+                // 웹이 화면 진입 시 마지막 예약 진단을 조회 (실기기에서 예약 성패 확인용)
+                let json = UserDefaults.standard.string(forKey: AlarmService.diagKey) ?? "null"
+                webView?.evaluateJavaScript(
+                    "window.__runlabAlarmResult && window.__runlabAlarmResult(\(json))",
+                    completionHandler: nil
+                )
             case "setParticipant":
                 if let code = body["code"] as? String {
                     UserDefaults.standard.set(code, forKey: "runlab.participantCode")

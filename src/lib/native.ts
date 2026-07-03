@@ -58,3 +58,34 @@ export function nativeCancelAlarm() {
 export function nativeSetParticipant(code: string) {
   handler()?.postMessage({ type: "setParticipant", code });
 }
+
+/**
+ * 네이티브 알람 예약 결과 (AlarmService.emit이 되돌려주는 진단).
+ * requested > scheduled 면 시스템에 실제로 안 걸린 것 → UI에서 실패로 표시.
+ */
+export interface AlarmSyncResult {
+  path: string; // alarmkit | legacy:... | legacyDenied:... 등 (실패 경로 식별)
+  authState: string; // AlarmKit 권한 상태 (authorized / denied / notDetermined / threw ...)
+  requested: number; // 켜진 알람 수
+  scheduled: number; // 실제로 시스템에 등록된 수
+  systemCount: number; // 시스템이 보고한 등록 알람 수
+  errors: string[]; // 예약 실패 사유(있으면)
+  at: string;
+}
+
+/**
+ * 네이티브가 알람 예약을 끝낼 때마다 결과를 받는 콜백 등록.
+ * 브리지가 window.__runlabAlarmResult(json)을 호출한다 (WebShellView.evaluateJavaScript).
+ */
+export function onNativeAlarmResult(cb: (r: AlarmSyncResult) => void) {
+  if (typeof window === "undefined") return;
+  (window as unknown as { __runlabAlarmResult?: (r: AlarmSyncResult) => void }).__runlabAlarmResult =
+    (r) => {
+      if (r) cb(r);
+    };
+}
+
+/** 마지막 예약 진단을 요청 (화면 진입 시). 네이티브가 __runlabAlarmResult로 회신. */
+export function requestAlarmDiag() {
+  handler()?.postMessage({ type: "getAlarmDiag" });
+}

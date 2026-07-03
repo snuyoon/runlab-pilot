@@ -10,7 +10,7 @@
  * - Safari(비네이티브)에서는 취침 화면을 켜둔 채로만 동작하는 웹 알람 폴백
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -24,7 +24,13 @@ import {
   ALARM_VIBRATIONS,
 } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
-import { isNativeApp, nativeSyncAlarms } from "@/lib/native";
+import {
+  isNativeApp,
+  nativeSyncAlarms,
+  onNativeAlarmResult,
+  requestAlarmDiag,
+  AlarmSyncResult,
+} from "@/lib/native";
 
 const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"]; // index+1 = day id
 
@@ -76,6 +82,17 @@ function AlarmInner() {
   const [alarms, setAlarms] = useState<AlarmItem[]>(() => getAlarms());
   const [editing, setEditing] = useState<AlarmItem | null>(null);
   const [toast, setToast] = useState("");
+  // 네이티브 알람 예약 결과 (진짜 시스템 등록 성패). 저장(=localStorage)과 별개로 확인.
+  const [syncResult, setSyncResult] = useState<AlarmSyncResult | null>(null);
+
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    onNativeAlarmResult(setSyncResult); // 저장할 때마다 네이티브가 결과를 되돌려줌
+    requestAlarmDiag(); // 화면 진입 시 마지막 예약 상태 조회
+  }, []);
+
+  const alarmFailed =
+    !!syncResult && syncResult.requested > syncResult.scheduled;
 
   /** 목록 저장 + 네이티브 동기화 */
   const commit = (next: AlarmItem[]) => {
@@ -135,6 +152,30 @@ function AlarmInner() {
         <div className="mx-5 mb-3 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-700 leading-relaxed">
           지금은 웹 브라우저예요. 앱을 닫아도 울리는 진짜 알람은 <strong>RunLab 앱</strong>에서 동작합니다.
         </div>
+      )}
+
+      {/* 네이티브 알람 예약 실패 경고 — "저장됨"과 "실제 시스템 등록됨"은 다르다 */}
+      {isNativeApp() && alarmFailed && syncResult && (
+        <div className="mx-5 mb-3 bg-red-50 border border-red-200 rounded-2xl p-3 text-xs text-red-700 leading-relaxed">
+          <strong>⚠️ 알람이 시스템에 등록되지 않았어요.</strong>
+          <br />
+          요청 {syncResult.requested}개 중 {syncResult.scheduled}개만 등록됨 · 권한: {syncResult.authState}
+          {syncResult.errors.length > 0 && (
+            <>
+              <br />
+              사유: {syncResult.errors.join("; ")}
+            </>
+          )}
+          <br />
+          설정 &gt; RunLab에서 알람 권한을 확인하고 알람을 다시 저장해보세요.
+        </div>
+      )}
+
+      {/* 정상 등록 확인용 진단 라인 (파일럿 검수용 — 실제 배포 시 숨김 가능) */}
+      {isNativeApp() && syncResult && !alarmFailed && (
+        <p className="mx-5 mb-3 text-[11px] text-slate-400">
+          시스템 등록 {syncResult.scheduled}개 · 권한 {syncResult.authState}
+        </p>
       )}
 
       {/* 알람 목록 */}

@@ -1,6 +1,7 @@
 import Foundation
 import UserNotifications
 import SwiftUI
+import os
 #if canImport(AlarmKit)
 import AlarmKit
 import ActivityKit
@@ -41,6 +42,32 @@ struct AlarmSpec {
 enum AlarmService {
     static let scheduledIDsKey = "runlab.alarmkit.ids" // 현재 등록된 AlarmKit id 목록
     static let legacyIDPrefix = "runlab-alarm-"
+    static let diagKey = "runlab.alarm.diag"           // 마지막 동기화 진단(JSON) — 실기기 가시화용
+
+    /// Swift print()는 실기기 log stream에 안 잡히므로(CLAUDE.md) Logger로 남긴다.
+    private static let log = Logger(subsystem: "com.snuyoon.runlab", category: "alarm")
+
+    /// 동기화 결과를 웹으로 되돌리는 훅 — WebShellView가 설정. emit()이 MainActor에서 호출.
+    @MainActor static var onSyncResult: ((String) -> Void)?
+
+    /// 예약 결과를 UserDefaults(진단) + Logger + 웹(evaluateJavaScript)으로 노출.
+    /// "저장은 됐는데 예약 0건"이 완전히 비가시였던 게 무발화 디버깅의 근본 걸림돌 → 반드시 가시화.
+    @MainActor private static func emit(
+        path: String, authState: String, requested: Int, scheduled: Int,
+        systemCount: Int, errors: [String]
+    ) {
+        let diag: [String: Any] = [
+            "path": path, "authState": authState,
+            "requested": requested, "scheduled": scheduled,
+            "systemCount": systemCount, "errors": errors,
+            "at": ISO8601DateFormatter().string(from: Date()),
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: diag),
+              let json = String(data: data, encoding: .utf8) else { return }
+        UserDefaults.standard.set(json, forKey: diagKey)
+        log.info("alarm sync 결과: \(json, privacy: .public)")
+        onSyncResult?(json)
+    }
 
     /// 작업 직렬화 체인 — sync/cancel이 겹쳐 실행되면 UserDefaults id 목록과
     /// 실제 예약이 어긋나 취소 불가능한 유령 알람이 생기므로 항상 순차 실행한다
@@ -84,17 +111,21 @@ enum AlarmService {
         let manager = AlarmManager.shared
 
         let enabled = specs.filter { $0.enabled }
+        var authState = "n/a"
         if !enabled.isEmpty {
             do {
                 let state = try await manager.requestAuthorization()
+                authState = String(describing: state)
                 guard state == .authorized else {
-                    print("AlarmKit 권한 거부 — 폴백")
+                    log.error("AlarmKit 권한 비승인(\(authState, privacy: .public)) — 레거시 폴백")
                     await cancelAllAlarmKit() // 남은 AlarmKit 알람 정리 (이중 알람 방지)
-                    await syncLegacy(specs)
+                    await syncLegacy(specs, reason: "authNotAuthorized:\(authState)", authState: authState)
                     return
                 }
             } catch {
-                print("AlarmKit 권한 요청 실패:", error)
+                // 이전엔 여기서 폴백 없이 return → 무발화. iOS 27 권한 API가 throw해도 로컬 알림이라도 울리게.
+                log.error("AlarmKit 권한 요청 throw: \(error.localizedDescription, privacy: .public) — 레거시 폴백")
+                await syncLegacy(specs, reason: "authThrew:\(error.localizedDescription)", authState: "threw")
                 return
             }
         }
@@ -103,18 +134,33 @@ enum AlarmService {
         await cancelAllLegacy() // 과거 폴백 알림 잔존분도 정리 (이중 알람 방지)
 
         var newIDs: [String] = []
+        var errors: [String] = []
         for spec in enabled {
             let id = UUID()
             do {
                 let config = try makeConfiguration(for: spec, id: id)
                 _ = try await manager.schedule(id: id, configuration: config)
                 newIDs.append(id.uuidString)
-                print("AlarmKit 예약: \(spec.label) \(spec.hour):\(spec.minute)")
+                log.info("AlarmKit 예약 성공: \(spec.label, privacy: .public) \(spec.hour):\(spec.minute)")
             } catch {
-                print("AlarmKit 예약 실패(\(spec.label)):", error)
+                let msg = "\(spec.label): \(error.localizedDescription)"
+                errors.append(msg)
+                log.error("AlarmKit 예약 실패 — \(msg, privacy: .public)")
             }
         }
         UserDefaults.standard.set(newIDs, forKey: scheduledIDsKey)
+
+        // 요청은 있었는데 단 하나도 예약 못 했으면(전멸) 로컬 알림으로라도 폴백 — 무발화 방지.
+        // 부분 성공(일부만 실패)은 손대지 않아 이중 알람 위험 없음.
+        if newIDs.isEmpty && !enabled.isEmpty {
+            log.error("AlarmKit 예약 전멸(요청 \(enabled.count)건) — 레거시 폴백")
+            await syncLegacy(specs, reason: "allScheduleFailed", carryErrors: errors, authState: authState)
+            return
+        }
+
+        let systemCount = (try? manager.alarms.count) ?? -1
+        await emit(path: "alarmkit", authState: authState, requested: enabled.count,
+                   scheduled: newIDs.count, systemCount: systemCount, errors: errors)
     }
 
     @available(iOS 26.1, *)
@@ -220,15 +266,24 @@ enum AlarmService {
 
     // MARK: - 폴백 (iOS 26.1 미만): 반복 로컬 알림
 
-    private static func syncLegacy(_ specs: [AlarmSpec]) async {
+    private static func syncLegacy(
+        _ specs: [AlarmSpec], reason: String = "belowIOS26_1",
+        carryErrors: [String] = [], authState: String = "n/a"
+    ) async {
         let center = UNUserNotificationCenter.current()
         let enabled = specs.filter { $0.enabled }
         if !enabled.isEmpty {
             let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-            guard granted else { print("알림 권한 거부"); return }
+            guard granted else {
+                log.error("알림 권한 거부 — 폴백도 무발화(\(reason, privacy: .public))")
+                await emit(path: "legacyDenied:\(reason)", authState: authState,
+                           requested: enabled.count, scheduled: 0, systemCount: 0, errors: carryErrors)
+                return
+            }
         }
         await cancelAllLegacy() // 등록 전에 정리 완료를 보장 (콜백 레이스로 새 알림이 지워지는 것 방지)
 
+        var added = 0
         for (idx, spec) in enabled.enumerated() {
             // 선택 요일마다 개별 트리거 (빈 배열 = 매일 → weekday 미지정 1개)
             let dayList: [Int?] = spec.days.isEmpty ? [nil] : spec.days.map { $0 }
@@ -251,10 +306,15 @@ enum AlarmService {
                         identifier: "\(legacyIDPrefix)\(idx)-\(di)-\(i)",
                         content: content, trigger: trigger
                     )
-                    try? await center.add(request)
+                    do { try await center.add(request); added += 1 }
+                    catch { log.error("레거시 알림 등록 실패: \(error.localizedDescription, privacy: .public)") }
                 }
             }
         }
+        // 로컬 알림은 spec당 여러 요청으로 등록됨 → 하나라도 등록됐으면 요청 전체가 반영된 것으로 본다.
+        await emit(path: "legacy:\(reason)", authState: authState,
+                   requested: enabled.count, scheduled: added > 0 ? enabled.count : 0,
+                   systemCount: added, errors: carryErrors)
     }
 
     /// 1=월~7=일 → UNCalendar weekday(1=일~7=토)
