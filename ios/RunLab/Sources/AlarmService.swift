@@ -181,16 +181,9 @@ enum AlarmService {
         // 알람 화면 구성
         let alert: AlarmPresentation.Alert
         if spec.isWake {
-            // 기상 알람: '설문 시작' 보조 버튼(끄기 버튼도 커스텀 stopIntent로 앱 오픈)
-            alert = AlarmPresentation.Alert(
-                title: "기상 알람 — RunLab",
-                secondaryButton: AlarmButton(
-                    text: "설문 시작",
-                    textColor: .white,
-                    systemImageName: "sun.max.fill"
-                ),
-                secondaryButtonBehavior: .custom
-            )
+            // 기상 알람: 버튼은 '끄기' 하나만. 끄면 StopSurveyIntent가 알람을 멈추고
+            // 곧바로 기상 설문(/ema)으로 연결한다 (별도 '설문 시작' 버튼 제거 — 요청).
+            alert = AlarmPresentation.Alert(title: "기상 알람 — RunLab")
         } else {
             alert = AlarmPresentation.Alert(title: LocalizedStringResource(stringLiteral: spec.label))
         }
@@ -204,12 +197,11 @@ enum AlarmService {
         let sound = alertSound(for: spec.sound)
 
         if spec.isWake {
-            // 끄기·설문 두 버튼 모두 앱을 열고 /ema로 이동
+            // '끄기'(StopSurveyIntent) 단일 버튼 → 알람 정지 후 /ema 이동. secondaryIntent 제거.
             return AlarmManager.AlarmConfiguration<RunLabAlarmMetadata>.alarm(
                 schedule: schedule,
                 attributes: attributes,
                 stopIntent: StopSurveyIntent(alarmID: id.uuidString),
-                secondaryIntent: OpenSurveyIntent(alarmID: id.uuidString),
                 sound: sound
             )
         } else {

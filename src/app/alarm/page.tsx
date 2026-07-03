@@ -45,16 +45,36 @@ function daysSummary(days: number[]): string {
 function TimeWheel({ label, value, onChange, max }: {
   label: string; value: number; onChange: (v: number) => void; max: number;
 }) {
+  // draft가 null이면 편집 중 아님 → 저장된 value를 두 자리로 표시.
+  // 탭하면 비우고 숫자 키패드로 직접 입력 (1분씩 ▲▼ 안 눌러도 됨). blur/Enter에 클램프 후 커밋.
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = draft ?? String(value).padStart(2, "0");
+
+  const commit = () => {
+    if (draft !== null && draft !== "") {
+      onChange(Math.max(0, Math.min(max, parseInt(draft, 10) || 0)));
+    }
+    setDraft(null); // 빈 입력이면 기존 값 유지
+  };
+
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="text-xs text-slate-400">{label}</span>
       <div className="flex flex-col items-center">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => onChange((value + 1) % (max + 1))} className="text-slate-400 text-2xl py-1">▲</motion.button>
-        <motion.div key={value} initial={{ y: -8, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-          className="text-5xl font-bold text-slate-800 tabular-nums w-20 text-center">
-          {String(value).padStart(2, "0")}
-        </motion.div>
-        <motion.button whileTap={{ scale: 0.9 }} onClick={() => onChange(value === 0 ? max : value - 1)} className="text-slate-400 text-2xl py-1">▼</motion.button>
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => onChange((value + 1) % (max + 1))} className="text-slate-400 text-2xl py-1" aria-label={`${label} 올리기`}>▲</motion.button>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={display}
+          onFocus={(e) => { setDraft(""); e.currentTarget.select(); }}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 2))}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          aria-label={label}
+          className="text-5xl font-bold text-slate-800 tabular-nums w-20 text-center bg-transparent rounded-xl focus:outline-none focus:bg-indigo-50 focus:ring-2 focus:ring-indigo-300"
+        />
+        <motion.button whileTap={{ scale: 0.9 }} onClick={() => onChange(value === 0 ? max : value - 1)} className="text-slate-400 text-2xl py-1" aria-label={`${label} 내리기`}>▼</motion.button>
       </div>
     </div>
   );
