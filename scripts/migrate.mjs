@@ -31,7 +31,7 @@ await sql`
   CREATE TABLE IF NOT EXISTS records (
     client_id TEXT PRIMARY KEY,
     participant_code TEXT NOT NULL REFERENCES participants(code),
-    kind TEXT NOT NULL CHECK (kind IN ('wake_ema','session_rpe','ostrc','sleep_log')),
+    kind TEXT NOT NULL,
     date DATE NOT NULL,
     completed_at TIMESTAMPTZ,
     payload JSONB NOT NULL,
@@ -39,8 +39,27 @@ await sql`
   )
 `;
 
+// 기존 DB의 kind CHECK 제약 제거 — 새 kind('workout' 등) 추가 시 매번 마이그레이션하지 않도록
+// kind 유효성은 앱/서버(/api/sync의 KINDS)에서 검증한다.
+await sql`ALTER TABLE records DROP CONSTRAINT IF EXISTS records_kind_check`;
+
 await sql`
   CREATE INDEX IF NOT EXISTS idx_records_participant ON records (participant_code, kind, date)
+`;
+
+// 코치 처방(계획 운동량) — 관리자가 엑셀로 업로드. 참여자 앱이 /api/plan으로 조회해 계획 AU 비교.
+// 계획 AU = planned_rpe × planned_min (Foster sRPE 부하).
+await sql`
+  CREATE TABLE IF NOT EXISTS plans (
+    participant_code TEXT NOT NULL REFERENCES participants(code),
+    date DATE NOT NULL,
+    planned_min INTEGER,
+    planned_rpe REAL,
+    planned_au REAL,
+    note TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (participant_code, date)
+  )
 `;
 
 // 연구자 테스트 코드만 시드 — 참여자 코드는 추측 불가능한 무작위 접미사로

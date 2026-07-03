@@ -624,6 +624,8 @@ export default function AdminPage() {
 function AdminInner() {
   const [key, setKey] = useState(() => localStorage.getItem(KEY_STORAGE) ?? "");
   const [keyInput, setKeyInput] = useState("");
+  const [planCsv, setPlanCsv] = useState("");
+  const [planResult, setPlanResult] = useState("");
   const [data, setData] = useState<AdminData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -765,6 +767,28 @@ function AdminInner() {
     });
     setSelected(null);
     void fetchData(key);
+  };
+
+  const uploadPlans = async () => {
+    // CSV(엑셀 붙여넣기) 파싱: 컬럼 = participant, date(YYYY-MM-DD), plannedMin, plannedRpe [, note]
+    const rows: { code: string; date: string; plannedMin: number; plannedRpe: number; note: string }[] = [];
+    for (const line of planCsv.trim().split(/\r?\n/)) {
+      const p = line.split(",").map((s) => s.trim());
+      if (p.length < 4 || !/^\d{4}-\d{2}-\d{2}$/.test(p[1])) continue; // 헤더·빈 줄 스킵
+      rows.push({ code: p[0], date: p[1], plannedMin: Number(p[2]), plannedRpe: Number(p[3]), note: p[4] ?? "" });
+    }
+    if (rows.length === 0) {
+      setPlanResult("유효한 행이 없어요. 형식: 참여코드,YYYY-MM-DD,계획분,목표RPE");
+      return;
+    }
+    const res = await fetch("/api/admin/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-key": key },
+      body: JSON.stringify({ rows }),
+    });
+    const json = await res.json().catch(() => ({}));
+    setPlanResult(res.ok ? `✅ 저장 ${json.saved}건 · 건너뜀 ${json.skippedCount}건` : "업로드 실패 (권한/형식 확인)");
+    if (res.ok) setPlanCsv("");
   };
 
   const downloadCSV = () => {
@@ -1203,6 +1227,28 @@ function AdminInner() {
             </div>
           </div>
         )}
+
+        {/* 코치 계획(운동량) 업로드 */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
+          <div className="text-sm font-bold text-slate-600 mb-1">🎯 코치 계획 업로드</div>
+          <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+            엑셀에서 복사해 붙여넣으세요. 열 순서: <strong>참여코드, 날짜(YYYY-MM-DD), 계획시간(분), 목표RPE</strong>{" "}
+            (선택: 메모). 목표 AU = 목표RPE × 계획분. 같은 참여자·날짜는 덮어씁니다.
+          </p>
+          <textarea
+            value={planCsv}
+            onChange={(e) => setPlanCsv(e.target.value)}
+            placeholder={"SNU-01-8HMJ,2026-07-05,40,6\nSNU-01-8HMJ,2026-07-07,60,8"}
+            rows={4}
+            className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 text-sm font-mono focus:border-indigo-400 focus:outline-none"
+          />
+          <div className="flex items-center gap-3 mt-2">
+            <button onClick={uploadPlans} className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-indigo-500">
+              업로드
+            </button>
+            {planResult && <span className="text-xs text-slate-500">{planResult}</span>}
+          </div>
+        </div>
 
         {/* 참여자 관리 */}
         <div className="bg-white rounded-2xl p-5 shadow-sm">

@@ -23,8 +23,15 @@ import {
   REASON_OPTIONS,
   PAIN_AREAS,
   DeviationReasonCode,
+  fetchPlans,
+  getPlanForDate,
+  workoutForDate,
+  sessionAU,
+  CoachPlan,
+  WorkoutSession,
 } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
+import { isNativeApp, healthKitSync } from "@/lib/native";
 
 type Phase = "srpe" | "plan" | "deviation" | "reason" | "pain";
 
@@ -59,6 +66,20 @@ function RPEInner() {
   const [pain, setPain] = useState<boolean | null>(null);
   const [painArea, setPainArea] = useState<string | null>(null);
   const [painNRS, setPainNRS] = useState<number | null>(null);
+
+  // AU 비교 — 가민 세션 부하(실제) vs 코치 계획
+  const today = todayStr();
+  const [code] = useState(() => loadData().settings.participantCode);
+  const [todayWorkout, setTodayWorkout] = useState<WorkoutSession | null>(() => workoutForDate(today));
+  const [plan, setPlan] = useState<CoachPlan | null>(() => getPlanForDate(today));
+
+  useEffect(() => {
+    if (isNativeApp()) healthKitSync(); // 세션 기록 진입 시 가민 자동 동기화
+    if (code) fetchPlans(code).then(() => setPlan(getPlanForDate(today)));
+    const onWorkout = () => setTodayWorkout(workoutForDate(today));
+    window.addEventListener("runlab:workout", onWorkout);
+    return () => window.removeEventListener("runlab:workout", onWorkout);
+  }, [code, today]);
 
   if (!loggedIn) return <div className="mobile-frame bg-orange-50" />;
 
@@ -164,6 +185,14 @@ function RPEInner() {
         {/* ===== Q2 계획 완수 ===== */}
         {phase === "plan" && (
           <>
+            <AUCard
+              actualAU={rpe !== null && todayWorkout ? sessionAU(rpe, todayWorkout.durationSec) : null}
+              workoutMin={todayWorkout ? Math.round(todayWorkout.durationSec / 60) : null}
+              distanceKm={todayWorkout ? todayWorkout.distanceM / 1000 : null}
+              plannedAU={plan?.plannedAU ?? null}
+              native={isNativeApp()}
+              onRefresh={() => healthKitSync()}
+            />
             <Question title="오늘 계획대로 완수했나요?" />
             <div className="grid grid-cols-2 gap-3">
               <ChoiceButton
@@ -314,6 +343,86 @@ function RPEInner() {
 }
 
 // ─── 재사용 UI ─────────────────────────────────────────────
+
+/** 세션 부하(AU) 카드 — 실제(가민×RPE) vs 코치 계획 비교. Q2 판단 근거로 노출. */
+function AUCard({ actualAU, workoutMin, distanceKm, plannedAU, native, onRefresh }: {
+  actualAU: number | null;
+  workoutMin: number | null;
+  distanceKm: number | null;
+  plannedAU: number | null;
+  native: boolean;
+  onRefresh: () => void;
+}) {
+  // 러닝 아직 미동기화 → AU 계산 불가
+  if (actualAU === null) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 mb-4">
+        <div className="text-sm font-semibold text-slate-600 mb-1">이번 세션 운동량 (AU)</div>
+        <p className="text-xs text-slate-400 leading-relaxed">
+          ⌚ 가민 러닝이 아직 동기화 안 됐어요. 러닝이 들어오면 <strong>세션 부하(AU)가 자동 계산</strong>돼요.
+          {native ? " 가민 Connect 앱을 열면 빨라져요." : ""}
+        </p>
+        {native && (
+          <button onClick={onRefresh} className="mt-2.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-full px-3 py-1.5">
+            🔄 새로고침
+          </button>
+        )}
+      </div>
+    );
+  }
+  const hasPlan = plannedAU != null && plannedAU > 0;
+  const ratio = hasPlan ? actualAU / (plannedAU as number) : null;
+  const pct = hasPlan ? Math.round(((actualAU - (plannedAU as number)) / (plannedAU as number)) * 100) : 0;
+  let verdict = { label: "", cls: "", bar: "bg-indigo-500" };
+  if (ratio != null) {
+    if (ratio > 1.1) verdict = { label: `계획 초과 +${pct}%`, cls: "text-rose-600 bg-rose-50", bar: "bg-rose-400" };
+    else if (ratio < 0.9) verdict = { label: `계획 미달 ${pct}%`, cls: "text-amber-600 bg-amber-50", bar: "bg-amber-400" };
+    else verdict = { label: "계획과 거의 일치", cls: "text-emerald-600 bg-emerald-50", bar: "bg-emerald-400" };
+  }
+  const max = hasPlan ? Math.max(actualAU, plannedAU as number) : actualAU;
+  return (
+    <div className="rounded-2xl border-2 border-indigo-100 bg-white p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-semibold text-slate-600">이번 세션 운동량 (AU)</div>
+        {ratio != null && (
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${verdict.cls}`}>{verdict.label}</span>
+        )}
+      </div>
+      {hasPlan ? (
+        <div className="space-y-2.5">
+          <AUBar label="계획" value={plannedAU as number} max={max} color="bg-slate-300" />
+          <AUBar label="실제" value={actualAU} max={max} color={verdict.bar} />
+        </div>
+      ) : (
+        <div className="flex items-baseline gap-2">
+          <span className="text-3xl font-extrabold text-indigo-600 tabular-nums">{actualAU}</span>
+          <span className="text-sm text-slate-400">AU · 코치 계획 미등록</span>
+        </div>
+      )}
+      <p className="text-[11px] text-slate-400 mt-2.5">
+        {distanceKm != null ? `${distanceKm.toFixed(2)}km · ` : ""}{workoutMin}분 × RPE = 세션 부하(AU)
+      </p>
+    </div>
+  );
+}
+
+function AUBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-slate-500 w-8 shrink-0">{label}</span>
+      <div className="flex-1 h-6 rounded-lg bg-slate-100 overflow-hidden">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${max > 0 ? Math.max(6, (value / max) * 100) : 0}%` }}
+          transition={{ type: "spring", stiffness: 120, damping: 20 }}
+          className={`h-full ${color} rounded-lg flex items-center justify-end pr-2`}
+        >
+          <span className="text-[11px] font-bold text-white tabular-nums">{value}</span>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
 
 function Question({ title, sub }: { title: string; sub?: string }) {
   return (

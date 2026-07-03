@@ -480,6 +480,60 @@ export function getWorkouts(data: StudyData = loadData()): WorkoutSession[] {
   return [...data.workouts].sort((a, b) => (a.startAt < b.startAt ? 1 : -1));
 }
 
+/** 특정 날짜의 러닝 세션 (그날 마지막 러닝) — AU 계산용 */
+export function workoutForDate(date: string, data: StudyData = loadData()): WorkoutSession | null {
+  const same = data.workouts.filter((w) => w.date === date);
+  if (same.length === 0) return null;
+  return same.sort((a, b) => (a.startAt < b.startAt ? 1 : -1))[0];
+}
+
+/** 세션 부하 AU = sRPE(0~10) × 세션 시간(분). (Foster session-RPE) */
+export function sessionAU(rpe: number, durationSec: number): number {
+  return Math.round(rpe * (durationSec / 60));
+}
+
+// ─── 코치 계획(처방 운동량) — 서버(/api/plan)에서 받아 로컬 캐시 ──────
+
+/** 코치 계획 1일치 */
+export interface CoachPlan {
+  date: string; // YYYY-MM-DD
+  plannedMin: number | null;
+  plannedRpe: number | null;
+  plannedAU: number | null; // = plannedRpe × plannedMin
+  note: string;
+}
+
+const PLANS_KEY = "runlab-plans-v1";
+
+export function loadPlans(): CoachPlan[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PLANS_KEY);
+    return raw ? (JSON.parse(raw) as CoachPlan[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getPlanForDate(date: string): CoachPlan | null {
+  return loadPlans().find((p) => p.date === date) ?? null;
+}
+
+/** 서버에서 참여자 계획을 받아 로컬에 캐시 (오프라인/조회 실패 시 기존 캐시 유지) */
+export async function fetchPlans(code: string): Promise<void> {
+  if (typeof window === "undefined" || !code) return;
+  try {
+    const res = await fetch(`/api/plan?code=${encodeURIComponent(code)}`);
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json?.ok && Array.isArray(json.plans)) {
+      localStorage.setItem(PLANS_KEY, JSON.stringify(json.plans));
+    }
+  } catch {
+    // 오프라인 등 — 다음 기회에
+  }
+}
+
 export function addOSTRCResponse(entry: Omit<OSTRCResponse, "id" | "completedAt">) {
   const data = loadData();
   const record: OSTRCResponse = { ...entry, id: makeId(), completedAt: new Date().toISOString() };
