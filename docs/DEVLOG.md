@@ -5,8 +5,8 @@
 ## 현재 상태 한 줄 요약
 
 웹앱(설문·백엔드·관리자)과 iOS 네이티브 앱(AlarmKit 진짜 알람)까지 **개발·검증·배포 완료**.
-**TestFlight 첫 빌드(1.0/1) 베타 심사 제출 완료(2026-07-03) → `WAITING_FOR_REVIEW`.**
-남은 것: **심사 승인(~24~48h) 후 공개 링크 공유** + **실기기 알람 최종 발화 확인(사용자)**.
+**TestFlight 베타 심사 + App Store 정식 심사 둘 다 제출 완료(2026-07-03) → 각각 `WAITING_FOR_REVIEW`.**
+남은 것: **심사 승인(~24~48h) 후 공개 링크 공유** + **실기기 알람 최종 발화 확인(사용자)** + **스크린샷 보강**(현재 로그인 화면 1장 — 아래).
 
 ## 타임라인 (요약)
 
@@ -59,6 +59,8 @@
 1. **실기기 알람 테스트** (사용자) — 체크리스트 3절. 소리/진동 피드백 받으면 조정.
 2. **TestFlight 배포** — ✅ **제출 완료(2026-07-03)**. Apple Developer Program 승인됨(유료 팀 **C9UCX4Z9RZ** = sungjae yun, Apple ID uosyoon@naver.com). App Store Connect 앱 생성(App ID **6787020530**, `com.snuyoon.runlab`) → Release 아카이브·IPA export(배포서명 자동) → altool 업로드 → 외부 그룹 "연구원" + 빌드 1.0/1 배정 → What to Test·설명·심사노트(리뷰어 코드 **TEST-01**) → 베타 심사 제출(`WAITING_FOR_REVIEW`). **자동화는 App Store Connect API 키(.p8, `~/.appstoreconnect/private_keys/`, Issuer/Key ID)로 `scripts/asc.mjs` 없이 세션 스크립트로 수행** — 앱 레코드 생성만 API 불가라 브라우저 1회. **공개 링크: https://testflight.apple.com/join/xdug6rnD (한도 25)** — 승인 후 활성. 재업로드 시 빌드번호↑.
    - ⚠️ **미확인**: 제출 빌드에 관측성(Logger·진단 emit)·폴백·기상알람 단일'끄기' 버튼 변경 포함. 실기기 **알람 실제 발화**는 아직 최종 확인 안 됨 — 심사 대기 중 dev 빌드(agua_claro)로 확인하고, 문제면 새 빌드 재업로드 후 연구원 공유.
+   - **App Store 정식 심사도 제출**(2026-07-03, 버전 1.0 → `WAITING_FOR_REVIEW`). 대부분 ASC REST API(`scratchpad/asc.mjs` = JWT ES256 헬퍼)로 자동 처리: 설명·키워드·지원URL·카테고리(HEALTH_AND_FITNESS)·연령등급(전부 해당없음)·심사정보(데모 TEST-01)·개인정보처리방침 URL(`/privacy` 신규 배포)·가격(무료)·copyright·contentRights·리뷰서브미션. **앱 레코드 생성**과 **개인정보 라벨(앱 데이터 사용)**은 API 불가(전자는 브라우저 ＋, 후자는 appDataUsages 엔드포인트 404) → **claude-in-chrome로 ASC 웹 설문 자동 작성 후 게시**(건강·피트니스·사용자 ID = 앱 기능·신원연결·비추적).
+   - ⚠️ **스크린샷 1장뿐**(로그인 화면, 6.7"/APP_IPHONE_67로 업로드). 로그인 후 화면은 시뮬레이터 웹뷰에 코드 입력이 필요한데 **macOS 손쉬운 사용 권한 미부여로 합성 클릭/키입력이 차단**돼 자동 캡처 불가. 권한 부여 시(시스템 설정>개인정보>손쉬운 사용) 재캡처 가능. 정식 심사는 로그인 화면만으로 리젝 위험 → 승인 전 보강 권장.
 3. (선택) 신규 OSTRC 문제 보고 시 연구자 이메일/푸시 알림 — 노르웨이 프로그램 방식(즉시 알림)이 표준.
 4. (선택) iOS 웹푸시 또는 네이티브 로컬알림으로 월요일 OSTRC 리마인더.
 5. (보류) 가민 연동 — 위 의사결정 9 참조.
