@@ -123,7 +123,11 @@ function DashboardInner() {
             {recentRPE.map((s) => (
               <div key={s.id} className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">{s.date}</span>
-                <span className="text-slate-400 text-xs flex-1 text-center">{s.note}</span>
+                <span className="text-slate-400 text-xs flex-1 text-center">
+                  {[s.planCompleted === false ? "계획 미달" : null, s.pain ? "🩹 통증" : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
                 <span className="font-bold text-orange-500">RPE {s.rpe}</span>
               </div>
             ))}

@@ -69,14 +69,67 @@ export interface WakeEMA {
   completedAt: string;
 }
 
-/** 러닝 세션 강도(RPE) 응답 */
+/** 계획 편차 사유 코드 (KAIST 협의 스키마 C1~C6) */
+export type DeviationReasonCode =
+  | "injury" // C1 몸이 아프거나 통증
+  | "illness" // C2 감기 등 컨디션
+  | "fatigue" // C3 피곤/회복 부족
+  | "psych" // C4 의욕 없음
+  | "external" // C5 시간·날씨·일정
+  | "adaptive"; // C6 일부러 조절(적응 신호 — 실패와 분리)
+
+/**
+ * 러닝 세션 설문 (세션 종료 후 micro-EMA — sRPE + 계획 편차 + 부상 트랙)
+ * Q1 sRPE(Foster CR-10 0~10) · Q2 계획완수 → (아니오면) Q2a 편차·Q2b 사유 · Q3 통증(독립)
+ */
 export interface SessionRPE {
   id: string;
   date: string;
-  rpe: number; // 1~10
-  note: string;
+  rpe: number; // Q1: 0~10 (Foster CR-10)
+  planCompleted: boolean; // Q2: 계획대로 완수했나
+  deviations: string[]; // Q2a: 무엇이 달랐나 (복수, planCompleted면 [])
+  reasonCode: DeviationReasonCode | null; // Q2b: 가장 큰 이유 (planCompleted면 null)
+  pain: boolean; // Q3: 세션 중/후 통증
+  painArea: string | null; // Q3: 부위 (통증 없으면 null)
+  painNRS: number | null; // Q3: 통증 강도 NRS 0~10 (통증 없으면 null)
   completedAt: string;
 }
+
+/** Q1 sRPE 언어 앵커 (Foster CR-10 표준 — 6·8·9는 앵커 없음) */
+export const SRPE_ANCHORS: Record<number, string> = {
+  0: "휴식", 1: "매우 쉬움", 2: "쉬움", 3: "보통", 4: "다소 힘듦",
+  5: "힘듦", 7: "매우 힘듦", 10: "최대",
+};
+
+/** Q2a 계획과 무엇이 달랐나 (복수 선택) */
+export const DEVIATION_OPTIONS: { id: string; label: string }[] = [
+  { id: "distance", label: "거리를 못 채웠다" },
+  { id: "pace", label: "페이스가 느려졌다" },
+  { id: "intensity", label: "전체적인 강도를 못 냈다" },
+  { id: "stopped", label: "중간에 멈췄다" },
+  { id: "other", label: "기타" },
+];
+
+/** Q2b 가장 큰 이유 (단일 선택, C1~C6) */
+export const REASON_OPTIONS: { code: DeviationReasonCode; label: string }[] = [
+  { code: "injury", label: "몸이 아프거나 통증이 있었다" },
+  { code: "illness", label: "감기 등 컨디션이 안 좋았다" },
+  { code: "fatigue", label: "피곤하거나 회복이 덜 됐다" },
+  { code: "psych", label: "의욕이 나지 않았다" },
+  { code: "external", label: "시간·날씨·일정 등 상황 때문" },
+  { code: "adaptive", label: "일부러 강도·거리를 조절했다" },
+];
+
+/** Q3 통증 부위 */
+export const PAIN_AREAS: { id: string; label: string }[] = [
+  { id: "foot_ankle", label: "발/발목" },
+  { id: "shin_calf", label: "정강이/종아리" },
+  { id: "knee", label: "무릎" },
+  { id: "thigh", label: "허벅지" },
+  { id: "hip_pelvis", label: "고관절/골반" },
+  { id: "lower_back", label: "허리" },
+  { id: "other", label: "기타" },
+];
 
 /**
  * OSTRC-H2 — 건강 문제 1건에 대한 응답
@@ -569,9 +622,17 @@ export function exportCSV(): string {
 
   lines.push("");
   lines.push("== session_rpe ==");
-  lines.push("participant,date,rpe,note,completed_at");
+  lines.push("participant,date,rpe,plan_completed,deviations,reason_code,pain,pain_area,pain_nrs,completed_at");
   for (const s of data.sessionRPEs) {
-    lines.push([code, s.date, s.rpe, s.note, s.completedAt].map(csvEscape).join(","));
+    lines.push([
+      code, s.date, s.rpe,
+      s.planCompleted === false ? "no" : s.planCompleted === true ? "yes" : "",
+      (s.deviations ?? []).join("; "),
+      s.reasonCode ?? "",
+      s.pain === true ? "yes" : s.pain === false ? "no" : "",
+      s.painArea ?? "", s.painNRS ?? "",
+      s.completedAt,
+    ].map(csvEscape).join(","));
   }
 
   lines.push("");

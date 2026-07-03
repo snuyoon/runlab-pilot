@@ -18,7 +18,37 @@ import {
   SleepLog,
   todayStr,
   mondayOf,
+  PAIN_AREAS,
+  REASON_OPTIONS,
 } from "@/store/studyStore";
+
+// 세션 설문 코드 → 한국어 라벨 (관리자 표시용)
+const PAIN_AREA_LABEL = Object.fromEntries(PAIN_AREAS.map((a) => [a.id, a.label]));
+const REASON_LABEL = Object.fromEntries(REASON_OPTIONS.map((r) => [r.code, r.label]));
+
+/** 세션 설문 상세 셀 — 계획 완수/미달(사유) + 통증(부위·NRS). 구버전 레코드는 "—". */
+function RpeExtra({ s }: { s: SessionRPE }) {
+  const p = s as Partial<SessionRPE>;
+  if (p.planCompleted === undefined) return <span className="text-slate-300">—</span>;
+  return (
+    <span>
+      {p.planCompleted === false ? (
+        <span className="text-amber-600 font-medium">
+          미달{p.reasonCode ? ` · ${REASON_LABEL[p.reasonCode] ?? p.reasonCode}` : ""}
+        </span>
+      ) : (
+        <span className="text-slate-400">완수</span>
+      )}
+      {p.pain && (
+        <span className="text-red-500 font-medium">
+          {" · 🩹 "}
+          {p.painArea ? PAIN_AREA_LABEL[p.painArea] ?? p.painArea : ""}
+          {p.painNRS != null ? ` ${p.painNRS}` : ""}
+        </span>
+      )}
+    </span>
+  );
+}
 import { useMounted } from "@/hooks/useMounted";
 
 const KEY_STORAGE = "runlab-admin-key";
@@ -163,10 +193,18 @@ function buildCSV(records: RecordRow[]): string {
 
   lines.push("");
   lines.push("== session_rpe ==");
-  lines.push("participant,date,rpe,note,completed_at");
+  lines.push("participant,date,rpe,plan_completed,deviations,reason_code,pain,pain_area,pain_nrs,completed_at");
   for (const r of records.filter((r) => r.kind === "session_rpe")) {
     const p = r.payload as SessionRPE;
-    lines.push([r.participant_code, p.date, p.rpe, p.note, p.completedAt].map(csvEscape).join(","));
+    lines.push([
+      r.participant_code, p.date, p.rpe,
+      p.planCompleted === false ? "no" : p.planCompleted === true ? "yes" : "",
+      (p.deviations ?? []).join("; "),
+      p.reasonCode ?? "",
+      p.pain === true ? "yes" : p.pain === false ? "no" : "",
+      p.painArea ?? "", p.painNRS ?? "",
+      p.completedAt,
+    ].map(csvEscape).join(","));
   }
 
   lines.push("");
@@ -1044,7 +1082,7 @@ function AdminInner() {
                         <tr className="text-slate-400 text-xs text-left border-b border-slate-200">
                           <th className="py-2 font-semibold">날짜</th>
                           <th className="font-semibold text-center">RPE</th>
-                          <th className="font-semibold">메모</th>
+                          <th className="font-semibold">계획·통증</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1059,7 +1097,7 @@ function AdminInner() {
                                   {s2.rpe}
                                 </span>
                               </td>
-                              <td className="text-slate-500 text-xs">{s2.note || "—"}</td>
+                              <td className="text-slate-500 text-xs"><RpeExtra s={s2} /></td>
                             </tr>
                           ))}
                       </tbody>
