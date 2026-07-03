@@ -25,15 +25,17 @@ import {
   DeviationReasonCode,
   fetchPlans,
   getPlanForDate,
+  getProgramsForWeek,
   workoutForDate,
   sessionAU,
   CoachPlan,
+  CoachProgram,
   WorkoutSession,
 } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
 import { isNativeApp, healthKitSync } from "@/lib/native";
 
-type Phase = "srpe" | "plan" | "deviation" | "reason" | "pain";
+type Phase = "srpe" | "program" | "plan" | "deviation" | "reason" | "pain";
 
 // 0~10 색상 (초록 → 빨강). sRPE 강도·NRS 통증 강도 공용.
 const SCALE_COLORS = [
@@ -67,19 +69,30 @@ function RPEInner() {
   const [painArea, setPainArea] = useState<string | null>(null);
   const [painNRS, setPainNRS] = useState<number | null>(null);
 
-  // AU 비교 — 가민 세션 부하(실제) vs 코치 계획
+  // AU 비교 — 가민 세션 부하(실제) vs 코치 처방(주간 프로그램 옵션)
   const today = todayStr();
   const [code] = useState(() => loadData().settings.participantCode);
   const [todayWorkout, setTodayWorkout] = useState<WorkoutSession | null>(() => workoutForDate(today));
   const [plan, setPlan] = useState<CoachPlan | null>(() => getPlanForDate(today));
+  const [programs, setPrograms] = useState<CoachProgram[]>(() => getProgramsForWeek());
+  // 오늘 실시한 프로그램: 1~9 = 코치 옵션, 0 = 프로그램 외/자유 러닝, null = 미선택
+  const [programOption, setProgramOption] = useState<number | null>(null);
 
   useEffect(() => {
     if (isNativeApp()) healthKitSync(); // 세션 기록 진입 시 가민 자동 동기화
-    if (code) fetchPlans(code).then(() => setPlan(getPlanForDate(today)));
+    if (code)
+      fetchPlans(code).then(() => {
+        setPlan(getPlanForDate(today));
+        setPrograms(getProgramsForWeek());
+      });
     const onWorkout = () => setTodayWorkout(workoutForDate(today));
     window.addEventListener("runlab:workout", onWorkout);
     return () => window.removeEventListener("runlab:workout", onWorkout);
   }, [code, today]);
+
+  const chosenProgram = programs.find((p) => p.option === programOption) ?? null;
+  // 비교 기준 목표 AU: 선택한 프로그램 옵션 > (구)일자 계획 > 없음
+  const targetAU = chosenProgram?.plannedAU ?? (programOption === 0 ? null : plan?.plannedAU ?? null);
 
   if (!loggedIn) return <div className="mobile-frame bg-orange-50" />;
 
@@ -108,6 +121,8 @@ function RPEInner() {
     addSessionRPE({
       date: todayStr(),
       rpe,
+      programOption, // 오늘 실시한 코치 프로그램 옵션 (0=자유 러닝, null=프로그램 미제공)
+      programAU: targetAU, // 당시 비교 기준 목표 AU 스냅샷
       planCompleted,
       deviations: planCompleted ? [] : deviations,
       reasonCode: planCompleted ? null : reasonCode,
@@ -119,9 +134,13 @@ function RPEInner() {
     setTimeout(() => router.push("/home"), 1800);
   };
 
+  const hasPrograms = programs.length > 0;
+  const afterSrpe: Phase = hasPrograms ? "program" : "plan";
+
   const goBack = () => {
     if (phase === "srpe") return router.push("/home");
-    if (phase === "plan") return setPhase("srpe");
+    if (phase === "program") return setPhase("srpe");
+    if (phase === "plan") return setPhase(hasPrograms ? "program" : "srpe");
     if (phase === "deviation") return setPhase("plan");
     if (phase === "reason") return setPhase("deviation");
     if (phase === "pain") return setPhase(planCompleted ? "plan" : "reason");
@@ -147,6 +166,15 @@ function RPEInner() {
           {SRPE_ANCHORS[rpe ?? -1] ? ` (${SRPE_ANCHORS[rpe as number]})` : ""}
           {pain ? " · 통증 기록됨" : ""}
         </div>
+        {rpe !== null && todayWorkout && (
+          <div className="text-slate-500 text-sm tabular-nums mt-1">
+            {chosenProgram
+              ? `옵션 ${chosenProgram.option} · 실제 ${sessionAU(rpe, todayWorkout.durationSec)} AU / 목표 ${Math.round(chosenProgram.plannedAU)} AU`
+              : programOption === 0
+                ? `자유 러닝 · ${sessionAU(rpe, todayWorkout.durationSec)} AU`
+                : null}
+          </div>
+        )}
       </div>
     );
   }
@@ -176,8 +204,83 @@ function RPEInner() {
             <Question title="이번 세션, 얼마나 힘들었나요?" sub="0 = 휴식 · 10 = 최대 (Foster CR-10)" />
             <TapScale value={rpe} onChange={setRpe} anchors={SRPE_ANCHORS} />
             <div className="flex-1" />
-            <PrimaryButton disabled={rpe === null} onClick={() => setPhase("plan")}>
+            <PrimaryButton disabled={rpe === null} onClick={() => setPhase(afterSrpe)}>
               {rpe === null ? "강도를 선택해주세요" : "다음"}
+            </PrimaryButton>
+          </>
+        )}
+
+        {/* ===== 프로그램 선택 (코치가 이번 주 옵션을 준 경우만) ===== */}
+        {phase === "program" && (
+          <>
+            <Question title="오늘 어떤 프로그램을 했나요?" sub="코치가 처방한 이번 주 프로그램" />
+            <div className="flex flex-col gap-2.5">
+              {programs.map((p, i) => {
+                const on = programOption === p.option;
+                // 가민 기록과 가장 비슷한 옵션에 힌트 배지 (자동 선택은 하지 않음 — 응답 편향 방지)
+                const isClosest =
+                  todayWorkout != null &&
+                  programs.every(
+                    (q) =>
+                      Math.abs(todayWorkout.durationSec / 60 - p.plannedMin) <=
+                      Math.abs(todayWorkout.durationSec / 60 - q.plannedMin)
+                  );
+                return (
+                  <motion.button
+                    key={p.option}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setProgramOption(p.option)}
+                    className={`relative flex items-center gap-3.5 px-4 py-4 rounded-2xl border-2 text-left transition-colors
+                      ${on ? "border-orange-400 bg-orange-50" : "border-slate-200 bg-white"}`}
+                  >
+                    {isClosest && (
+                      <span className="absolute -top-2 right-3 bg-indigo-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        ⌚ 기록과 비슷해요
+                      </span>
+                    )}
+                    <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-base font-extrabold shrink-0
+                      ${on ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500"}`}>
+                      {p.option}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className={`block text-[15px] font-bold truncate ${on ? "text-orange-700" : "text-slate-700"}`}>
+                        {p.label || `프로그램 ${p.option}`}
+                      </span>
+                      <span className="block text-xs text-slate-400 mt-0.5 tabular-nums">
+                        {p.plannedMin}분 · 목표 RPE {p.plannedRpe}
+                      </span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className={`block text-lg font-extrabold tabular-nums ${on ? "text-orange-600" : "text-slate-400"}`}>
+                        {Math.round(p.plannedAU)}
+                      </span>
+                      <span className="block text-[10px] text-slate-400 -mt-0.5">목표 AU</span>
+                    </span>
+                  </motion.button>
+                );
+              })}
+              {/* 프로그램 외 */}
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setProgramOption(0)}
+                className={`flex items-center gap-3.5 px-4 py-3.5 rounded-2xl border-2 text-left transition-colors
+                  ${programOption === 0 ? "border-orange-400 bg-orange-50" : "border-dashed border-slate-300 bg-white"}`}
+              >
+                <span className={`w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0
+                  ${programOption === 0 ? "bg-orange-500 text-white" : "bg-slate-100"}`}>
+                  🏃
+                </span>
+                <span className={`text-[15px] font-semibold ${programOption === 0 ? "text-orange-700" : "text-slate-500"}`}>
+                  프로그램 외 · 자유 러닝
+                </span>
+              </motion.button>
+            </div>
+            <div className="flex-1" />
+            <PrimaryButton disabled={programOption === null} onClick={() => setPhase("plan")}>
+              {programOption === null ? "실시한 프로그램을 선택해주세요" : "다음"}
             </PrimaryButton>
           </>
         )}
@@ -189,11 +292,21 @@ function RPEInner() {
               actualAU={rpe !== null && todayWorkout ? sessionAU(rpe, todayWorkout.durationSec) : null}
               workoutMin={todayWorkout ? Math.round(todayWorkout.durationSec / 60) : null}
               distanceKm={todayWorkout ? todayWorkout.distanceM / 1000 : null}
-              plannedAU={plan?.plannedAU ?? null}
+              plannedAU={targetAU}
+              planLabel={chosenProgram ? `옵션 ${chosenProgram.option}` : programOption === 0 ? "자유 러닝" : null}
               native={isNativeApp()}
               onRefresh={() => healthKitSync()}
             />
-            <Question title="오늘 계획대로 완수했나요?" />
+            <Question
+              title="오늘 계획대로 완수했나요?"
+              sub={
+                chosenProgram
+                  ? `옵션 ${chosenProgram.option}${chosenProgram.label ? ` · ${chosenProgram.label}` : ""} (${chosenProgram.plannedMin}분 · RPE ${chosenProgram.plannedRpe}) 기준`
+                  : programOption === 0
+                    ? "오늘 하려던 것 기준으로 답해주세요"
+                    : undefined
+              }
+            />
             <div className="grid grid-cols-2 gap-3">
               <ChoiceButton
                 selected={planCompleted === true}
@@ -344,12 +457,13 @@ function RPEInner() {
 
 // ─── 재사용 UI ─────────────────────────────────────────────
 
-/** 세션 부하(AU) 카드 — 실제(가민×RPE) vs 코치 계획 비교. Q2 판단 근거로 노출. */
-function AUCard({ actualAU, workoutMin, distanceKm, plannedAU, native, onRefresh }: {
+/** 세션 부하(AU) 카드 — 실제(가민×RPE) vs 코치 처방(선택 옵션) 비교. Q2 판단 근거로 노출. */
+function AUCard({ actualAU, workoutMin, distanceKm, plannedAU, planLabel, native, onRefresh }: {
   actualAU: number | null;
   workoutMin: number | null;
   distanceKm: number | null;
   plannedAU: number | null;
+  planLabel?: string | null;
   native: boolean;
   onRefresh: () => void;
 }) {
@@ -390,13 +504,15 @@ function AUCard({ actualAU, workoutMin, distanceKm, plannedAU, native, onRefresh
       </div>
       {hasPlan ? (
         <div className="space-y-2.5">
-          <AUBar label="계획" value={plannedAU as number} max={max} color="bg-slate-300" />
+          <AUBar label={planLabel ?? "계획"} value={Math.round(plannedAU as number)} max={max} color="bg-slate-300" />
           <AUBar label="실제" value={actualAU} max={max} color={verdict.bar} />
         </div>
       ) : (
         <div className="flex items-baseline gap-2">
           <span className="text-3xl font-extrabold text-indigo-600 tabular-nums">{actualAU}</span>
-          <span className="text-sm text-slate-400">AU · 코치 계획 미등록</span>
+          <span className="text-sm text-slate-400">
+            AU{planLabel === "자유 러닝" ? " · 자유 러닝(비교 없음)" : " · 코치 처방 미등록"}
+          </span>
         </div>
       )}
       <p className="text-[11px] text-slate-400 mt-2.5">
@@ -409,7 +525,7 @@ function AUCard({ actualAU, workoutMin, distanceKm, plannedAU, native, onRefresh
 function AUBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-slate-500 w-8 shrink-0">{label}</span>
+      <span className="text-xs text-slate-500 w-16 shrink-0 truncate">{label}</span>
       <div className="flex-1 h-6 rounded-lg bg-slate-100 overflow-hidden">
         <motion.div
           initial={{ width: 0 }}

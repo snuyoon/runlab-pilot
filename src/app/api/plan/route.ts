@@ -25,7 +25,22 @@ export async function GET(request: Request) {
       plannedAU: r.planned_au as number | null,
       note: (r.note as string) ?? "",
     }));
-    return NextResponse.json({ ok: true, plans });
+    // 주간 프로그램 옵션 (코치가 주 단위로 옵션 1·2·3 처방)
+    const progRows = await sql`
+      SELECT to_char(week_monday, 'YYYY-MM-DD') AS week, option_no, label, planned_min, planned_rpe, planned_au
+      FROM programs
+      WHERE participant_code = ${code} AND week_monday >= (CURRENT_DATE - INTERVAL '60 days')
+      ORDER BY week_monday DESC, option_no ASC LIMIT 200
+    `;
+    const programs = progRows.map((r) => ({
+      week: r.week as string,
+      option: r.option_no as number,
+      label: (r.label as string) ?? "",
+      plannedMin: r.planned_min as number,
+      plannedRpe: r.planned_rpe as number,
+      plannedAU: r.planned_au as number,
+    }));
+    return NextResponse.json({ ok: true, plans, programs });
   } catch (e) {
     console.error("plan get error:", e);
     return NextResponse.json({ ok: false, error: "server" }, { status: 500 });

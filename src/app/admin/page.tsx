@@ -206,11 +206,12 @@ function buildCSV(records: RecordRow[]): string {
 
   lines.push("");
   lines.push("== session_rpe ==");
-  lines.push("participant,date,rpe,plan_completed,deviations,reason_code,pain,pain_area,pain_nrs,completed_at");
+  lines.push("participant,date,rpe,program_option,program_au,plan_completed,deviations,reason_code,pain,pain_area,pain_nrs,completed_at");
   for (const r of records.filter((r) => r.kind === "session_rpe")) {
     const p = r.payload as SessionRPE;
     lines.push([
       r.participant_code, p.date, p.rpe,
+      p.programOption ?? "", p.programAU ?? "",
       p.planCompleted === false ? "no" : p.planCompleted === true ? "yes" : "",
       (p.deviations ?? []).join("; "),
       p.reasonCode ?? "",
@@ -770,15 +771,19 @@ function AdminInner() {
   };
 
   const uploadPlans = async () => {
-    // CSV(엑셀 붙여넣기) 파싱: 컬럼 = participant, date(YYYY-MM-DD), plannedMin, plannedRpe [, note]
-    const rows: { code: string; date: string; plannedMin: number; plannedRpe: number; note: string }[] = [];
+    // CSV(엑셀 붙여넣기) 파싱 — 주간 프로그램 형식:
+    // 참여코드, 주(그 주 아무 날짜 YYYY-MM-DD), 옵션번호(1~9), 계획분, 목표RPE [, 라벨]
+    const rows: { code: string; week: string; option: number; plannedMin: number; plannedRpe: number; label: string }[] = [];
     for (const line of planCsv.trim().split(/\r?\n/)) {
       const p = line.split(",").map((s) => s.trim());
-      if (p.length < 4 || !/^\d{4}-\d{2}-\d{2}$/.test(p[1])) continue; // 헤더·빈 줄 스킵
-      rows.push({ code: p[0], date: p[1], plannedMin: Number(p[2]), plannedRpe: Number(p[3]), note: p[4] ?? "" });
+      if (p.length < 5 || !/^\d{4}-\d{2}-\d{2}$/.test(p[1])) continue; // 헤더·빈 줄 스킵
+      rows.push({
+        code: p[0], week: p[1], option: Number(p[2]),
+        plannedMin: Number(p[3]), plannedRpe: Number(p[4]), label: p[5] ?? "",
+      });
     }
     if (rows.length === 0) {
-      setPlanResult("유효한 행이 없어요. 형식: 참여코드,YYYY-MM-DD,계획분,목표RPE");
+      setPlanResult("유효한 행이 없어요. 형식: 참여코드,주날짜,옵션,계획분,목표RPE[,라벨]");
       return;
     }
     const res = await fetch("/api/admin/plans", {
@@ -1230,15 +1235,16 @@ function AdminInner() {
 
         {/* 코치 계획(운동량) 업로드 */}
         <div className="bg-white rounded-2xl p-5 shadow-sm mb-4">
-          <div className="text-sm font-bold text-slate-600 mb-1">🎯 코치 계획 업로드</div>
+          <div className="text-sm font-bold text-slate-600 mb-1">🎯 주간 프로그램 업로드</div>
           <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-            엑셀에서 복사해 붙여넣으세요. 열 순서: <strong>참여코드, 날짜(YYYY-MM-DD), 계획시간(분), 목표RPE</strong>{" "}
-            (선택: 메모). 목표 AU = 목표RPE × 계획분. 같은 참여자·날짜는 덮어씁니다.
+            코치가 주 단위로 처방하는 프로그램 옵션. 엑셀에서 복사해 붙여넣으세요. 열 순서:{" "}
+            <strong>참여코드, 주(그 주 아무 날짜), 옵션번호(1~3), 계획시간(분), 목표RPE, 라벨(선택)</strong>.
+            목표 AU = 목표RPE × 계획분. 참여자는 세션 설문에서 실시한 옵션을 골라 비교합니다. 같은 참여자·주·옵션은 덮어씁니다.
           </p>
           <textarea
             value={planCsv}
             onChange={(e) => setPlanCsv(e.target.value)}
-            placeholder={"SNU-01-8HMJ,2026-07-05,40,6\nSNU-01-8HMJ,2026-07-07,60,8"}
+            placeholder={"SNU-01-8HMJ,2026-07-06,1,40,4,이지런\nSNU-01-8HMJ,2026-07-06,2,60,6,템포런\nSNU-01-8HMJ,2026-07-06,3,30,8,인터벌"}
             rows={4}
             className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 text-sm font-mono focus:border-indigo-400 focus:outline-none"
           />

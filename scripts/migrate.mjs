@@ -62,6 +62,23 @@ await sql`
   )
 `;
 
+// 주간 코치 프로그램 — 코치가 주 단위로 옵션 1·2·3을 처방, 참여자는 세션 설문에서
+// 실시한 옵션을 골라 그 옵션의 목표 AU와 실제 AU를 비교한다.
+// week_monday = 해당 주 월요일(YYYY-MM-DD). 목표 AU = planned_rpe × planned_min.
+await sql`
+  CREATE TABLE IF NOT EXISTS programs (
+    participant_code TEXT NOT NULL REFERENCES participants(code),
+    week_monday DATE NOT NULL,
+    option_no INTEGER NOT NULL CHECK (option_no BETWEEN 1 AND 9),
+    label TEXT NOT NULL DEFAULT '',
+    planned_min INTEGER NOT NULL,
+    planned_rpe REAL NOT NULL,
+    planned_au REAL NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (participant_code, week_monday, option_no)
+  )
+`;
+
 // 연구자 테스트 코드만 시드 — 참여자 코드는 추측 불가능한 무작위 접미사로
 // scripts/add-participants.mjs 또는 관리자 화면에서 발급한다
 await sql`

@@ -86,6 +86,10 @@ export interface SessionRPE {
   id: string;
   date: string;
   rpe: number; // Q1: 0~10 (Foster CR-10)
+  /** 오늘 실시한 코치 프로그램 옵션 (1~9, 프로그램 외/자유 러닝이면 0, 미선택·구버전 null) */
+  programOption?: number | null;
+  /** 선택한 옵션의 목표 AU 스냅샷 (당시 비교 기준 보존) */
+  programAU?: number | null;
   planCompleted: boolean; // Q2: 계획대로 완수했나
   deviations: string[]; // Q2a: 무엇이 달랐나 (복수, planCompleted면 [])
   reasonCode: DeviationReasonCode | null; // Q2b: 가장 큰 이유 (planCompleted면 null)
@@ -492,6 +496,53 @@ export function sessionAU(rpe: number, durationSec: number): number {
   return Math.round(rpe * (durationSec / 60));
 }
 
+/** 이번 주 훈련부하 집계 — 홈 WeekLoadCard용 */
+export interface WeekLoadDay {
+  date: string;
+  label: string; // 월~일
+  isToday: boolean;
+  isFuture: boolean;
+  au: number; // 그날 실제 AU (세션기록 + 가민 워크아웃 둘 다 있을 때만)
+  emaDone: boolean;
+}
+
+/**
+ * 이번 주(월~일) 실제 AU 합 vs 계획 AU 합.
+ * 계획 합 = 참여자가 세션 설문에서 선택한 옵션의 programAU 스냅샷 합
+ * (코치가 주중에 프로그램을 수정해도 과거 기록은 불변).
+ */
+export function weekLoad(data: StudyData = loadData()): {
+  actualAU: number;
+  plannedAU: number;
+  days: WeekLoadDay[];
+} {
+  const monday = new Date(mondayOf() + "T00:00:00");
+  const today = todayStr();
+  const days: WeekLoadDay[] = ["월", "화", "수", "목", "금", "토", "일"].map((label, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const ds = todayStr(d);
+    const s = data.sessionRPEs.find((x) => x.date === ds);
+    const w = s ? workoutForDate(ds, data) : null;
+    return {
+      date: ds,
+      label,
+      isToday: ds === today,
+      isFuture: ds > today,
+      au: s && w ? sessionAU(s.rpe, w.durationSec) : 0,
+      emaDone: data.wakeEMAs.some((e) => e.date === ds),
+    };
+  });
+  const weekSessions = data.sessionRPEs.filter((s) => s.date >= mondayOf() && s.date <= today);
+  return {
+    actualAU: days.reduce((a, d) => a + d.au, 0),
+    plannedAU: Math.round(
+      weekSessions.reduce((a, s) => a + (s.programAU ?? getPlanForDate(s.date)?.plannedAU ?? 0), 0)
+    ),
+    days,
+  };
+}
+
 // ─── 코치 계획(처방 운동량) — 서버(/api/plan)에서 받아 로컬 캐시 ──────
 
 /** 코치 계획 1일치 */
@@ -504,6 +555,17 @@ export interface CoachPlan {
 }
 
 const PLANS_KEY = "runlab-plans-v1";
+const PROGRAMS_KEY = "runlab-programs-v1";
+
+/** 주간 코치 프로그램 옵션 1건 (코치가 주 단위로 옵션 1·2·3 처방) */
+export interface CoachProgram {
+  week: string; // 해당 주 월요일 YYYY-MM-DD
+  option: number; // 1~9
+  label: string; // 예: "이지런 40분"
+  plannedMin: number;
+  plannedRpe: number;
+  plannedAU: number; // = plannedRpe × plannedMin
+}
 
 export function loadPlans(): CoachPlan[] {
   if (typeof window === "undefined") return [];
@@ -519,7 +581,24 @@ export function getPlanForDate(date: string): CoachPlan | null {
   return loadPlans().find((p) => p.date === date) ?? null;
 }
 
-/** 서버에서 참여자 계획을 받아 로컬에 캐시 (오프라인/조회 실패 시 기존 캐시 유지) */
+export function loadPrograms(): CoachProgram[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PROGRAMS_KEY);
+    return raw ? (JSON.parse(raw) as CoachProgram[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 이번 주(월요일 기준) 프로그램 옵션 목록 — 옵션 번호순 */
+export function getProgramsForWeek(weekMonday: string = mondayOf()): CoachProgram[] {
+  return loadPrograms()
+    .filter((p) => p.week === weekMonday)
+    .sort((a, b) => a.option - b.option);
+}
+
+/** 서버에서 참여자 계획+주간 프로그램을 받아 로컬에 캐시 (실패 시 기존 캐시 유지) */
 export async function fetchPlans(code: string): Promise<void> {
   if (typeof window === "undefined" || !code) return;
   try {
@@ -528,6 +607,9 @@ export async function fetchPlans(code: string): Promise<void> {
     const json = await res.json();
     if (json?.ok && Array.isArray(json.plans)) {
       localStorage.setItem(PLANS_KEY, JSON.stringify(json.plans));
+    }
+    if (json?.ok && Array.isArray(json.programs)) {
+      localStorage.setItem(PROGRAMS_KEY, JSON.stringify(json.programs));
     }
   } catch {
     // 오프라인 등 — 다음 기회에
@@ -727,10 +809,11 @@ export function exportCSV(): string {
 
   lines.push("");
   lines.push("== session_rpe ==");
-  lines.push("participant,date,rpe,plan_completed,deviations,reason_code,pain,pain_area,pain_nrs,completed_at");
+  lines.push("participant,date,rpe,program_option,program_au,plan_completed,deviations,reason_code,pain,pain_area,pain_nrs,completed_at");
   for (const s of data.sessionRPEs) {
     lines.push([
       code, s.date, s.rpe,
+      s.programOption ?? "", s.programAU ?? "",
       s.planCompleted === false ? "no" : s.planCompleted === true ? "yes" : "",
       (s.deviations ?? []).join("; "),
       s.reasonCode ?? "",
