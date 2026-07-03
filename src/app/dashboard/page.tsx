@@ -8,12 +8,12 @@
  * 아이폰에서는 '공유하기'(Web Share)로 카톡/메일/에어드랍 전송 가능.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { loadData, exportJSON, exportCSV, resetAll, getWorkouts } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
-import { isNativeApp, nativeCancelAlarm, requestHealthKit } from "@/lib/native";
+import { isNativeApp, nativeCancelAlarm, requestHealthKit, healthKitSync } from "@/lib/native";
 
 /** 초/km → "5'30\"/km" */
 function fmtPace(secPerKm: number | null): string {
@@ -98,7 +98,17 @@ function DashboardInner() {
 
   const recentRPE = [...data.sessionRPEs].reverse().slice(0, 5);
   const recentOSTRC = [...data.ostrcResponses].reverse().slice(0, 4);
-  const workouts = getWorkouts(data).slice(0, 8);
+  const [workouts, setWorkouts] = useState(() => getWorkouts(data).slice(0, 8));
+  useEffect(() => {
+    const reload = () => setWorkouts(getWorkouts(loadData()).slice(0, 8));
+    window.addEventListener("runlab:workout", reload);
+    return () => window.removeEventListener("runlab:workout", reload);
+  }, []);
+  const onSyncWorkouts = () => {
+    healthKitSync();
+    showToast("가민 최근 기록을 불러오는 중이에요");
+    setTimeout(() => setWorkouts(getWorkouts(loadData()).slice(0, 8)), 2500);
+  };
 
   return (
     <div className="mobile-frame flex flex-col bg-slate-50 px-5 pt-8 pb-10 safe-top safe-bottom">
@@ -154,31 +164,43 @@ function DashboardInner() {
       <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-bold text-slate-600">⌚ 자동 러닝 기록</div>
-          {isNativeApp() && (
+          <div className="flex items-center gap-2">
+            {isNativeApp() && (
+              <button onClick={onSyncWorkouts} className="text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-full px-3 py-1.5">
+                🔄 새로고침
+              </button>
+            )}
+            {workouts.length > 0 && (
+              <button onClick={() => router.push("/runs")} className="text-xs font-semibold text-slate-500 px-1">
+                전체 보기 →
+              </button>
+            )}
+          </div>
+        </div>
+        {!isNativeApp() ? (
+          <p className="text-xs text-slate-400 leading-relaxed">
+            가민 워치 기록 자동 유입은 <strong>RunLab 앱</strong>에서 동작해요. 앱에서 아래 &lsquo;가민·건강
+            연동&rsquo;을 누르고, 가민 Connect 앱에서 &lsquo;Apple 건강&rsquo; 공유를 켜주세요.
+          </p>
+        ) : workouts.length === 0 ? (
+          <div>
+            <p className="text-xs text-slate-400 leading-relaxed mb-3">
+              가민 Connect 앱에서 <strong>Apple 건강 공유</strong>를 켜고 아래 연동을 누르면, 러닝이 자동으로
+              들어와요. (연동한 <strong>이후</strong> 기록부터)
+            </p>
             <button
               onClick={() => {
                 requestHealthKit();
                 showToast("건강 데이터 접근을 허용하면 러닝이 자동으로 들어와요");
               }}
-              className="text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-full px-3 py-1.5"
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-violet-600"
             >
               가민·건강 연동
             </button>
-          )}
-        </div>
-        {!isNativeApp() ? (
-          <p className="text-xs text-slate-400 leading-relaxed">
-            가민 워치 기록 자동 유입은 <strong>RunLab 앱</strong>에서 동작해요. 앱에서 &lsquo;가민·건강
-            연동&rsquo;을 누르고, 가민 Connect 앱에서 &lsquo;Apple 건강&rsquo; 공유를 켜주세요.
-          </p>
-        ) : workouts.length === 0 ? (
-          <p className="text-xs text-slate-400 leading-relaxed">
-            아직 들어온 러닝이 없어요. 위 <strong>가민·건강 연동</strong>을 누르고, 가민 Connect 앱 설정에서
-            <strong> Apple 건강 공유</strong>를 켜면 이후 러닝이 자동으로 표시됩니다.
-          </p>
+          </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {workouts.map((w) => (
+          <div className="flex flex-col gap-2">
+            {workouts.slice(0, 5).map((w) => (
               <div key={w.id} className="flex items-center justify-between text-sm border-b border-slate-100 last:border-0 pb-2 last:pb-0">
                 <span className="text-slate-500 w-14 shrink-0">{w.date.slice(5).replace("-", "/")}</span>
                 <span className="font-bold text-slate-700 tabular-nums">{(w.distanceM / 1000).toFixed(2)}km</span>

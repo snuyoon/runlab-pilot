@@ -260,6 +260,23 @@ function HomeInner() {
         </button>
       </motion.div>
 
+      {/* ── 러닝 기록 (가민 자동 유입) ── */}
+      <motion.button
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.21 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={() => router.push("/runs")}
+        className="w-full flex items-center gap-3.5 rounded-2xl p-4 text-left bg-white border-2 border-slate-100 shadow-sm mb-6"
+      >
+        <span className="text-3xl">⌚</span>
+        <div className="flex-1">
+          <div className="font-semibold text-slate-800 text-[15px]">러닝 기록</div>
+          <div className="text-xs text-slate-400 mt-0.5">가민 워치 러닝 자동 기록 · 누적 통계</div>
+        </div>
+        <span className="text-xl text-slate-300">›</span>
+      </motion.button>
+
       {/* ── 이번 주 기상 설문 현황 ── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}

@@ -468,6 +468,10 @@ export function addWorkoutSession(entry: Omit<WorkoutSession, "completedAt">): b
   });
   persist(data);
   void flushOutbox();
+  // 새 워크아웃 유입 시 화면이 실시간 갱신되도록 알림 (dashboard·/runs가 구독)
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("runlab:workout"));
+  }
   return true;
 }
 
