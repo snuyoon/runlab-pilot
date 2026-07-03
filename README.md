@@ -1,11 +1,22 @@
 # RunLab Pilot — 러닝 연구 파일럿 참여자 앱
 
-> AI 스마트 러닝워치 연구의 **파일럿 테스트(약 10명)** 용 참여자 앱 + 연구자 백엔드.
-> **아이폰 전용** 최적화. 응답은 서버(Neon Postgres)로 자동 수집되어 관리자 화면에서 실시간 확인.
+> AI 스마트 러닝워치 연구의 **파일럿 테스트(약 10명)** 용 참여자 앱 + 연구자 백엔드 + **iOS 네이티브 앱(AlarmKit 알람)**.
+> 응답은 서버(Neon Postgres)로 자동 수집되어 관리자 화면에서 실시간 확인.
 
-- 참여자 앱: **https://runlab-pilot.vercel.app**
+- 참여자 앱: **https://runlab-pilot.vercel.app** (권장: iOS 네이티브 앱 — [ios/](ios/))
 - 관리자 대시보드: **https://runlab-pilot.vercel.app/admin** (관리자 키 필요)
-- 실기기 테스트 절차: [docs/파일럿테스트_체크리스트.md](docs/파일럿테스트_체크리스트.md)
+
+## 📚 문서 지도 (새로 합류하면 이 순서로)
+
+| 문서 | 내용 |
+|---|---|
+| [docs/DEVLOG.md](docs/DEVLOG.md) | **작업 경과·의사결정·다음 할 일** ← 먼저 읽기 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 웹/백엔드/관리자/iOS 전체 구조, 브리지 프로토콜 |
+| [docs/OSTRC.md](docs/OSTRC.md) | OSTRC-H2 구현 규칙(게이트키퍼·점수) + 문헌 근거 |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md) | 연구 운영(참여자·경고 패널·원격 초기화) + 배포/TestFlight |
+| [docs/파일럿테스트_체크리스트.md](docs/파일럿테스트_체크리스트.md) | 실기기 검수 절차 |
+| [ios/README-iOS.md](ios/README-iOS.md) | iOS 빌드·서명·배포 |
+| [CLAUDE.md](CLAUDE.md) | AI 에이전트 작업 규칙 (핵심 불변 규칙·테스트 노하우) |
 
 ---
 
