@@ -11,9 +11,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { loadData, exportJSON, exportCSV, resetAll } from "@/store/studyStore";
+import { loadData, exportJSON, exportCSV, resetAll, getWorkouts } from "@/store/studyStore";
 import { useMounted } from "@/hooks/useMounted";
-import { isNativeApp, nativeCancelAlarm } from "@/lib/native";
+import { isNativeApp, nativeCancelAlarm, requestHealthKit } from "@/lib/native";
+
+/** 초/km → "5'30\"/km" */
+function fmtPace(secPerKm: number | null): string {
+  if (secPerKm == null || !isFinite(secPerKm) || secPerKm <= 0) return "—";
+  const m = Math.floor(secPerKm / 60);
+  const s = Math.round(secPerKm % 60);
+  return `${m}'${String(s).padStart(2, "0")}"/km`;
+}
+/** 초 → "42분" / "1시간 05분" */
+function fmtDuration(sec: number): string {
+  const m = Math.round(sec / 60);
+  if (m < 60) return `${m}분`;
+  return `${Math.floor(m / 60)}시간 ${String(m % 60).padStart(2, "0")}분`;
+}
 
 export default function DashboardPage() {
   const mounted = useMounted();
@@ -84,6 +98,7 @@ function DashboardInner() {
 
   const recentRPE = [...data.sessionRPEs].reverse().slice(0, 5);
   const recentOSTRC = [...data.ostrcResponses].reverse().slice(0, 4);
+  const workouts = getWorkouts(data).slice(0, 8);
 
   return (
     <div className="mobile-frame flex flex-col bg-slate-50 px-5 pt-8 pb-10 safe-top safe-bottom">
@@ -134,6 +149,49 @@ function DashboardInner() {
           </div>
         </div>
       )}
+
+      {/* 자동 러닝 기록 (가민 → Apple 건강 → 자동 유입) */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-bold text-slate-600">⌚ 자동 러닝 기록</div>
+          {isNativeApp() && (
+            <button
+              onClick={() => {
+                requestHealthKit();
+                showToast("건강 데이터 접근을 허용하면 러닝이 자동으로 들어와요");
+              }}
+              className="text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-full px-3 py-1.5"
+            >
+              가민·건강 연동
+            </button>
+          )}
+        </div>
+        {!isNativeApp() ? (
+          <p className="text-xs text-slate-400 leading-relaxed">
+            가민 워치 기록 자동 유입은 <strong>RunLab 앱</strong>에서 동작해요. 앱에서 &lsquo;가민·건강
+            연동&rsquo;을 누르고, 가민 Connect 앱에서 &lsquo;Apple 건강&rsquo; 공유를 켜주세요.
+          </p>
+        ) : workouts.length === 0 ? (
+          <p className="text-xs text-slate-400 leading-relaxed">
+            아직 들어온 러닝이 없어요. 위 <strong>가민·건강 연동</strong>을 누르고, 가민 Connect 앱 설정에서
+            <strong> Apple 건강 공유</strong>를 켜면 이후 러닝이 자동으로 표시됩니다.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {workouts.map((w) => (
+              <div key={w.id} className="flex items-center justify-between text-sm border-b border-slate-100 last:border-0 pb-2 last:pb-0">
+                <span className="text-slate-500 w-14 shrink-0">{w.date.slice(5).replace("-", "/")}</span>
+                <span className="font-bold text-slate-700 tabular-nums">{(w.distanceM / 1000).toFixed(2)}km</span>
+                <span className="text-slate-500 text-xs tabular-nums">{fmtPace(w.avgPaceSecPerKm)}</span>
+                <span className="text-slate-400 text-xs tabular-nums">{fmtDuration(w.durationSec)}</span>
+                <span className="text-rose-500 text-xs tabular-nums w-12 text-right">
+                  {w.avgHeartRate ? `${Math.round(w.avgHeartRate)}♥` : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* 최근 주간 설문 */}
       {recentOSTRC.length > 0 && (

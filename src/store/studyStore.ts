@@ -182,10 +182,29 @@ export interface SleepLog {
   alarmDismissedAt: string | null;
 }
 
+/**
+ * 러닝 워치 운동 세션 (자동 유입 — Apple 건강/HealthKit 경유).
+ * 가민 FR265 → Garmin Connect → Apple 건강 → iOS 네이티브 셸이 읽어 브리지로 전달.
+ * id = HealthKit 워크아웃 UUID → 멱등 키(중복 방지).
+ */
+export interface WorkoutSession {
+  id: string; // HealthKit 워크아웃 UUID
+  date: string; // YYYY-MM-DD (세션 시작 로컬 날짜)
+  source: string; // "healthkit"
+  activityType: string; // "running" 등
+  startAt: string; // ISO
+  endAt: string; // ISO
+  durationSec: number;
+  distanceM: number; // 미터
+  avgPaceSecPerKm: number | null; // 초/km (거리 0이면 null)
+  avgHeartRate: number | null; // bpm
+  completedAt: string;
+}
+
 /** 서버 전송 대기 큐 항목 */
 export interface OutboxItem {
   clientId: string;
-  kind: "wake_ema" | "session_rpe" | "ostrc" | "sleep_log";
+  kind: "wake_ema" | "session_rpe" | "ostrc" | "sleep_log" | "workout";
   date: string;
   completedAt: string;
   payload: unknown;
@@ -198,6 +217,7 @@ export interface StudyData {
   sessionRPEs: SessionRPE[];
   ostrcResponses: OSTRCResponse[];
   sleepLogs: SleepLog[];
+  workouts: WorkoutSession[];
   outbox: OutboxItem[];
 }
 
@@ -239,6 +259,7 @@ function makeDefaultData(): StudyData {
     sessionRPEs: [],
     ostrcResponses: [],
     sleepLogs: [],
+    workouts: [],
     outbox: [],
   };
 }
@@ -427,6 +448,32 @@ export function addSessionRPE(entry: Omit<SessionRPE, "id" | "completedAt">) {
   });
   persist(data);
   void flushOutbox();
+}
+
+/**
+ * 워치 운동 세션 자동 유입 (HealthKit 경유). id = 워크아웃 UUID로 멱등 —
+ * 이미 저장된 세션이면 스킵. 반환값: 새로 추가됐으면 true.
+ */
+export function addWorkoutSession(entry: Omit<WorkoutSession, "completedAt">): boolean {
+  const data = loadData();
+  if (!entry.id || data.workouts.some((w) => w.id === entry.id)) return false;
+  const record: WorkoutSession = { ...entry, completedAt: new Date().toISOString() };
+  data.workouts.push(record);
+  enqueue(data, {
+    clientId: record.id,
+    kind: "workout",
+    date: record.date,
+    completedAt: record.completedAt,
+    payload: record,
+  });
+  persist(data);
+  void flushOutbox();
+  return true;
+}
+
+/** 최근 운동 세션 (자동 유입) — 최신순 */
+export function getWorkouts(data: StudyData = loadData()): WorkoutSession[] {
+  return [...data.workouts].sort((a, b) => (a.startAt < b.startAt ? 1 : -1));
 }
 
 export function addOSTRCResponse(entry: Omit<OSTRCResponse, "id" | "completedAt">) {
@@ -665,6 +712,16 @@ export function exportCSV(): string {
   lines.push("participant,date,bedtime_at,alarm_dismissed_at");
   for (const l of data.sleepLogs) {
     lines.push([code, l.date, l.bedtimeAt, l.alarmDismissedAt ?? ""].map(csvEscape).join(","));
+  }
+
+  lines.push("");
+  lines.push("== workout (auto / HealthKit) ==");
+  lines.push("participant,date,source,activity,start_at,end_at,duration_sec,distance_m,avg_pace_sec_per_km,avg_hr");
+  for (const w of data.workouts) {
+    lines.push([
+      code, w.date, w.source, w.activityType, w.startAt, w.endAt,
+      w.durationSec, w.distanceM, w.avgPaceSecPerKm ?? "", w.avgHeartRate ?? "",
+    ].map(csvEscape).join(","));
   }
 
   return lines.join("\n");

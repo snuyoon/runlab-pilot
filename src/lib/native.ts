@@ -89,3 +89,38 @@ export function onNativeAlarmResult(cb: (r: AlarmSyncResult) => void) {
 export function requestAlarmDiag() {
   handler()?.postMessage({ type: "getAlarmDiag" });
 }
+
+/**
+ * 네이티브(HealthKit)에서 넘어오는 운동 세션.
+ * 가민 FR265 → Garmin Connect → Apple 건강 → iOS 셸이 읽어 브리지로 전달.
+ */
+export interface NativeWorkout {
+  id: string; // HealthKit 워크아웃 UUID
+  date: string; // YYYY-MM-DD
+  source: string; // "healthkit"
+  activityType: string; // "running" 등
+  startAt: string;
+  endAt: string;
+  durationSec: number;
+  distanceM: number;
+  avgPaceSecPerKm: number | null;
+  avgHeartRate: number | null;
+}
+
+/** 네이티브가 워크아웃을 전달할 때 호출할 콜백 등록 (window.__runlabWorkout). */
+export function onNativeWorkout(cb: (w: NativeWorkout) => void) {
+  if (typeof window === "undefined") return;
+  (window as unknown as { __runlabWorkout?: (w: NativeWorkout) => void }).__runlabWorkout = (w) => {
+    if (w) cb(w);
+  };
+}
+
+/** HealthKit 권한 요청 + 연동 시작 (사용자 '연동' 버튼). */
+export function requestHealthKit() {
+  handler()?.postMessage({ type: "requestHealthKit" });
+}
+
+/** 최근 워크아웃 재동기화 요청 (앱/화면 진입 시 catch-up). 네이티브가 __runlabWorkout로 재전송. */
+export function healthKitSync() {
+  handler()?.postMessage({ type: "healthKitSync" });
+}

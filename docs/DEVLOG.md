@@ -18,7 +18,7 @@
 | 07-02 저녁 | 관리자 상세 가독성 개선, RPE 하루 1회, 기상설문 1~10 **드래그 슬라이더** + OSTRC **스냅 슬라이더**, 원격 초기화(reset_at), 계정 전환 초기화 |
 | 07-02 밤 | 관리자 **주의 필요 3패널**(문헌 기반 기준), iOS 네이티브 앱 착수(AlarmKit 리서치 → WKWebView 셸 + 알람) |
 | 07-03 새벽 | Xcode 26.6 설치됨 → AlarmKit 빌드 성공. **풀 알람앱**(여러 알람+소리+진동), 재로그인 버그 수정, 시뮬레이터 E2E, 적대적 리뷰 **17건 수정**, 문서화 |
-| 07-03 낮 | 알람 미발화 진단(관측성 Logger·폴백·기상알람 단일버튼), **TestFlight + App Store 정식 심사 제출**(ASC API 자동화 `scratchpad/asc.mjs` + 개인정보 라벨은 브라우저 자동화), **세션 설문 확장**(단순 RPE → sRPE 0~10 CR-10 + 계획완수 게이트키퍼 Q2a/Q2b + 통증 NRS 독립 트랙) |
+| 07-03 낮 | 알람 미발화 진단(관측성 Logger·폴백·기상알람 단일버튼), **TestFlight + App Store 정식 심사 제출**(ASC API 자동화 `scratchpad/asc.mjs` + 개인정보 라벨은 브라우저 자동화), **세션 설문 확장**(단순 RPE → sRPE 0~10 CR-10 + 계획완수 게이트키퍼 Q2a/Q2b + 통증 NRS 독립 트랙), **가민 FR265 세션 연동**(Apple 건강/HealthKit 경유 러닝 거리·페이스·심박 자동 유입 — 웹+iOS 구현, 컴파일 검증, 실기기 확인 대기) |
 
 ## 주요 의사결정과 근거
 
@@ -30,7 +30,8 @@
 6. **참여 코드 사전등록 + 무작위 접미사** — 열거·이웃 오타로 인한 데이터 오염 방지 (리뷰에서 확정된 취약점).
 7. **RPE·기상설문 하루 1회** — 사용자 지시. RPE는 "그날의 대표 세션" 개념.
 8. **스누즈 미구현** — AlarmKit 스누즈는 위젯 익스텐션 필수라 범위 제외. 필요해지면 ActivityKit 위젯 추가.
-9. **가민(Forerunner 265) 연동 보류** — 사용자 결정. 리서치 결론 보관: 공식 Garmin Health API가 최적이나 2026-07 현재 신규 신청 중단; 대안 Fitrockr PRO(€150/월, FR265+REST API), Labfront($500~1250/년, API는 $4k 애드온), Garmin Health 연구 그랜트 문의. 비공식 라이브러리(비번 수집·차단)와 Strava(수면 없음)는 기각.
+9. **가민(Forerunner 265 Music) 세션 연동 — Apple 건강(HealthKit) 경유로 구현(2026-07-03)**. 리서치·검증(멀티에이전트 워크플로) 후 결정: FR265 → Garmin Connect(Apple 건강 공유 ON) → HealthKit → iOS 네이티브 셸이 러닝 워크아웃(거리·페이스·시간·심박) 읽어 브리지로 웹 → `/api/sync` → Neon. **무료·가민 파트너십 불필요·기존 셸 재사용**이라 파일럿 최적. 구현: `HealthKitService.swift`(권한·HKObserverQuery 백그라운드 전달·30일 catch-up), `HealthKitBridge.tsx`(루트 레이아웃 상주 수신), `WorkoutSession`(kind `workout`, UUID 멱등), dashboard/admin 표시·CSV. **HealthKit capability 추가 = 다음 빌드용**(현 심사 빌드엔 없음). 실기기 엔드투엔드(러닝→Connect→건강→앱) 최종 확인 필요. iOS 전용(안드로이드 별도).
+   - **기존 메모 정정**(재검증): (a) Garmin Connect Developer Program(Activity API)은 현재 신규 신청 **열림**(공식 Health API 웰니스/수면은 여전히 중단). (b) Strava 기각 사유는 '수면 없음'이 아니라 **API 약관 위반**(7일 캐시 한도·분석/집계 금지·AI 학습 금지) — 세션 데이터는 완벽하나 연구 저장/분석 자체가 위반. (c) Fitrockr 진입가 **€50/월 BASIC**(구간페이스·GPS·케이던스·가민 독자지표까지 필요하거나 안드로이드 포함 시 대안). 비공식 garminconnect(비번)는 기각 유지.
 
 ## 적대적 리뷰에서 배운 교훈 (재발 방지)
 

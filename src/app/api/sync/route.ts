@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-const KINDS = new Set(["wake_ema", "session_rpe", "ostrc", "sleep_log"]);
+const KINDS = new Set(["wake_ema", "session_rpe", "ostrc", "sleep_log", "workout"]);
 
 interface IncomingRecord {
   clientId: string;

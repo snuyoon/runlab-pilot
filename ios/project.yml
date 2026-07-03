@@ -17,10 +17,17 @@ targets:
         CFBundleDisplayName: RunLab
         # AlarmKit 필수 키 — 없으면 알람 예약 불가 (entitlement는 필요 없음)
         NSAlarmKitUsageDescription: "설정하신 시각에 기상 알람을 울리기 위해 필요합니다."
+        # HealthKit — 가민 러닝 세션(거리·페이스·심박)을 Apple 건강에서 읽어오기 위함 (읽기 전용)
+        NSHealthShareUsageDescription: "가민 워치의 러닝 기록(거리·페이스·심박)을 연구용으로 자동 수집하기 위해 건강 데이터 읽기 권한이 필요합니다."
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: RunLab/RunLab.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.background-delivery: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.snuyoon.runlab

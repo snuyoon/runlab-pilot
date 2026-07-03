@@ -50,6 +50,15 @@ struct WebShellView: UIViewRepresentable {
             )
         }
 
+        // HealthKit(가민→Apple 건강) 워크아웃을 웹으로 전달하는 훅. 이전에 연동한 사용자는 앱 열 때 자동 재개.
+        HealthKitService.onWorkout = { [weak coordinator = context.coordinator] json in
+            coordinator?.webView?.evaluateJavaScript(
+                "window.__runlabWorkout && window.__runlabWorkout(\(json))",
+                completionHandler: nil
+            )
+        }
+        HealthKitService.startIfEnabled()
+
         // 당겨서 새로고침
         let refresh = UIRefreshControl()
         refresh.addTarget(
@@ -133,6 +142,12 @@ struct WebShellView: UIViewRepresentable {
                 if let code = body["code"] as? String {
                     UserDefaults.standard.set(code, forKey: "runlab.participantCode")
                 }
+            case "requestHealthKit":
+                // 사용자 '가민·건강 연동' 버튼 → HealthKit 권한 요청 + 동기화 시작
+                HealthKitService.requestAndStart()
+            case "healthKitSync":
+                // 화면 진입 시 밀린 워크아웃 catch-up (권한 있을 때만)
+                HealthKitService.startIfEnabled()
             default:
                 break
             }

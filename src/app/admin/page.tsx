@@ -16,6 +16,7 @@ import {
   SessionRPE,
   OSTRCResponse,
   SleepLog,
+  WorkoutSession,
   todayStr,
   mondayOf,
   PAIN_AREAS,
@@ -63,7 +64,7 @@ interface Participant {
 interface RecordRow {
   client_id: string;
   participant_code: string;
-  kind: "wake_ema" | "session_rpe" | "ostrc" | "sleep_log";
+  kind: "wake_ema" | "session_rpe" | "ostrc" | "sleep_log" | "workout";
   date: string;
   completed_at: string | null;
   payload: unknown;
@@ -76,6 +77,14 @@ interface AdminData {
 }
 
 // ─── 날짜 유틸 ──────────────────────────────────────────────
+
+/** 초/km → "5'30\"/km" (관리자 표시용) */
+function fmtPace(secPerKm: number | null): string {
+  if (secPerKm == null || !isFinite(secPerKm) || secPerKm <= 0) return "—";
+  const m = Math.floor(secPerKm / 60);
+  const s = Math.round(secPerKm % 60);
+  return `${m}'${String(s).padStart(2, "0")}"`;
+}
 
 function lastNDays(n: number): string[] {
   const out: string[] = [];
@@ -103,6 +112,7 @@ interface ParticipantStats {
   emas: WakeEMA[];
   rpes: SessionRPE[];
   ostrcs: OSTRCResponse[];
+  workouts: WorkoutSession[];
   lastActivity: string | null;
   missedEMADays: number; // 어제부터 거꾸로 연속 미응답 일수
 }
@@ -120,6 +130,7 @@ function computeStats(records: RecordRow[]): Map<string, ParticipantStats> {
         emas: [],
         rpes: [],
         ostrcs: [],
+        workouts: [],
         lastActivity: null,
         missedEMADays: 0,
       };
@@ -153,6 +164,8 @@ function computeStats(records: RecordRow[]): Map<string, ParticipantStats> {
       s.ostrcs.push(p);
     } else if (r.kind === "sleep_log") {
       s.sleepLogs.push(r.payload as SleepLog);
+    } else if (r.kind === "workout") {
+      s.workouts.push(r.payload as WorkoutSession);
     }
   }
 
@@ -239,6 +252,17 @@ function buildCSV(records: RecordRow[]): string {
   for (const r of records.filter((r) => r.kind === "sleep_log")) {
     const p = r.payload as SleepLog;
     lines.push([r.participant_code, p.date, p.bedtimeAt, p.alarmDismissedAt ?? ""].map(csvEscape).join(","));
+  }
+
+  lines.push("");
+  lines.push("== workout (auto / HealthKit) ==");
+  lines.push("participant,date,source,activity,start_at,end_at,duration_sec,distance_m,avg_pace_sec_per_km,avg_hr");
+  for (const r of records.filter((r) => r.kind === "workout")) {
+    const p = r.payload as WorkoutSession;
+    lines.push([
+      r.participant_code, p.date, p.source, p.activityType, p.startAt, p.endAt,
+      p.durationSec, p.distanceM, p.avgPaceSecPerKm ?? "", p.avgHeartRate ?? "",
+    ].map(csvEscape).join(","));
   }
 
   return lines.join("\n");
@@ -949,6 +973,7 @@ function AdminInner() {
                   ["🏃 러닝 세션", `${sel.rpes.length}회`],
                   ["📋 주간 설문", `${sel.ostrcs.length}주`],
                   ["🌙 수면 기록", `${sel.sleepLogs.length}회`],
+                  ["⌚ 러닝(자동)", `${sel.workouts.length}회`],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <div className="text-lg font-bold">{value}</div>
@@ -1133,6 +1158,42 @@ function AdminInner() {
                             <td className="text-slate-600">{fmtClock(l.bedtimeAt)}</td>
                             <td className="text-slate-600">{fmtClock(l.alarmDismissedAt)}</td>
                             <td className="font-semibold text-slate-700">{sleepDuration(l)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+
+              {/* ── 자동 러닝 (가민 → Apple 건강 → HealthKit) ── */}
+              <section>
+                <h3 className="text-sm font-bold text-slate-700 mb-3">
+                  ⌚ 자동 러닝 기록 <span className="font-normal text-slate-400">(최근 14건 · 가민→Apple 건강 자동 유입)</span>
+                </h3>
+                {sel.workouts.length === 0 ? (
+                  <p className="text-sm text-slate-300">유입된 기록 없음</p>
+                ) : (
+                  <table className="w-full text-sm max-w-xl">
+                    <thead>
+                      <tr className="text-slate-400 text-xs text-left border-b border-slate-200">
+                        <th className="py-2 font-semibold">날짜</th>
+                        <th className="font-semibold text-right">거리</th>
+                        <th className="font-semibold text-right">평균 페이스</th>
+                        <th className="font-semibold text-right">시간</th>
+                        <th className="font-semibold text-right">평균 심박</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...sel.workouts]
+                        .sort((a, b) => (a.startAt < b.startAt ? 1 : -1))
+                        .slice(0, 14)
+                        .map((w, i) => (
+                          <tr key={w.id} className={i % 2 === 1 ? "bg-slate-50" : ""}>
+                            <td className="py-2 text-slate-600">{w.date.slice(5).replace("-", "/")}</td>
+                            <td className="text-right font-semibold text-slate-700 tabular-nums">{(w.distanceM / 1000).toFixed(2)}km</td>
+                            <td className="text-right text-slate-600 tabular-nums">{fmtPace(w.avgPaceSecPerKm)}</td>
+                            <td className="text-right text-slate-500 tabular-nums">{Math.round(w.durationSec / 60)}분</td>
+                            <td className="text-right text-rose-500 tabular-nums">{w.avgHeartRate ? Math.round(w.avgHeartRate) : "—"}</td>
                           </tr>
                         ))}
                     </tbody>

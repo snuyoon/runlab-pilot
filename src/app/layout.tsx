@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
+import { HealthKitBridge } from "@/components/HealthKitBridge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,7 +38,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-dvh bg-slate-50">{children}</body>
+      <body className="min-h-dvh bg-slate-50">
+        <HealthKitBridge />
+        {children}
+      </body>
     </html>
   );
 }
