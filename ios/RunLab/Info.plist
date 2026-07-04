@@ -26,6 +26,8 @@
 	<string>설정하신 시각에 기상 알람을 울리기 위해 필요합니다.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>가민 워치의 러닝 기록(거리·페이스·심박)을 연구용으로 자동 수집하기 위해 건강 데이터 읽기 권한이 필요합니다.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>이 앱은 건강 데이터를 저장(쓰기)하지 않으며, 러닝 기록을 읽어오기 위한 목적으로만 건강 접근을 사용합니다.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
