@@ -151,24 +151,47 @@ function OptionCard({
   onClick,
   label,
   description,
+  disabled = false,
+  badge,
 }: {
   selected: boolean;
   onClick: () => void;
   label: string;
   description?: string;
+  disabled?: boolean;
+  badge?: string;
 }) {
   return (
     <motion.button
-      onClick={onClick}
-      whileTap={{ scale: 0.97 }}
-      className={`w-full text-left px-4 py-3.5 rounded-2xl border-2 transition-colors
-        ${selected ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"}`}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      whileTap={disabled ? undefined : { scale: 0.97 }}
+      aria-disabled={disabled}
+      className={`relative w-full text-left px-4 py-3.5 rounded-2xl border-2 transition-colors
+        ${
+          disabled
+            ? "border-slate-100 bg-slate-50 cursor-not-allowed"
+            : selected
+              ? "border-indigo-400 bg-indigo-50"
+              : "border-slate-200 bg-white"
+        }`}
     >
-      <div className={`text-[15px] leading-snug ${selected ? "text-indigo-700 font-semibold" : "text-slate-700"}`}>
+      {badge && (
+        <span className="absolute top-3 right-3 text-[10px] font-bold text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+          {badge}
+        </span>
+      )}
+      <div
+        className={`text-[15px] leading-snug ${
+          disabled ? "text-slate-300" : selected ? "text-indigo-700 font-semibold" : "text-slate-700"
+        }`}
+      >
         {label}
       </div>
       {description && (
-        <div className="text-xs text-slate-400 mt-1 leading-relaxed">{description}</div>
+        <div className={`text-xs mt-1 leading-relaxed ${disabled ? "text-slate-300" : "text-slate-400"}`}>
+          {description}
+        </div>
       )}
     </motion.button>
   );
@@ -424,17 +447,6 @@ function OSTRCInner() {
               />
             </div>
             <div className="flex-1" />
-            {/* 잘못 진입한 반복 회차 탈출구 — "예(또 있음)"를 잘못 눌렀을 때
-                지금까지 완료한 문제들로 바로 제출 (Q1 응답과 무관하게 항상 노출) */}
-            {coreIndex === 0 && problems.length > 0 && (
-              <button
-                onClick={() => submit(problems)}
-                className="w-full py-3 mb-2 rounded-2xl text-sm font-semibold text-slate-500
-                  bg-white border-2 border-slate-200"
-              >
-                더 보고할 문제 없음 — 지금까지 응답 제출 ({problems.length}건)
-              </button>
-            )}
             <NextButton
               enabled={draft.core[coreIndex] !== null}
               onClick={() => {
@@ -487,24 +499,38 @@ function OSTRCInner() {
               {OSTRC_Q5.text}
             </div>
             <div className="flex flex-col gap-2.5">
-              {OSTRC_Q5.options
-                .filter((opt) => !(opt.value === "mental" && usedMental))
-                .map((opt) => (
+              {OSTRC_Q5.options.map((opt) => {
+                const done = opt.value === "mental" && usedMental;
+                return (
                   <OptionCard
                     key={opt.value}
                     label={opt.label}
                     description={opt.description}
                     selected={draft.type === opt.value}
+                    disabled={done}
+                    badge={done ? "이번 주 완료" : undefined}
                     onClick={() => patch({ type: opt.value })}
                   />
-                ))}
+                );
+              })}
             </div>
             {usedMental && (
               <p className="text-xs text-slate-400 mt-3">
-                정신 건강 문제는 이번 주에 이미 응답해서 제외됐어요.
+                정신 건강 문제는 이번 주에 이미 응답하셨습니다.
               </p>
             )}
             <div className="flex-1" />
+            {/* 없음·제출 탈출구 — 유형 선택 페이지에 노출.
+                잘못 진입했거나 더 보고할 문제가 없을 때 지금까지 응답으로 제출 */}
+            <button
+              onClick={() => submit(problems)}
+              className="w-full py-3 mb-2 rounded-2xl text-sm font-semibold text-slate-500
+                bg-white border-2 border-slate-200 active:bg-slate-50"
+            >
+              {problems.length > 0
+                ? `해당 없음 — 지금까지 응답 제출 (${problems.length}건)`
+                : "해당 없음 — 설문 종료"}
+            </button>
             <NextButton
               enabled={draft.type !== null}
               onClick={() => {
@@ -523,19 +549,24 @@ function OSTRCInner() {
               부상을 입은 신체 부위 및 영역 범주
             </div>
             <div className="flex flex-col gap-2">
-              {OSTRC_BODY_AREAS.filter((area) => !usedBodyAreas.has(area.label)).map((area) => (
-                <OptionCard
-                  key={area.label}
-                  label={area.label}
-                  description={area.description || undefined}
-                  selected={draft.bodyArea === area.label}
-                  onClick={() => patch({ bodyArea: area.label })}
-                />
-              ))}
+              {OSTRC_BODY_AREAS.map((area) => {
+                const done = usedBodyAreas.has(area.label);
+                return (
+                  <OptionCard
+                    key={area.label}
+                    label={area.label}
+                    description={area.description || undefined}
+                    selected={draft.bodyArea === area.label}
+                    disabled={done}
+                    badge={done ? "이번 주 완료" : undefined}
+                    onClick={() => patch({ bodyArea: area.label })}
+                  />
+                );
+              })}
             </div>
             {usedBodyAreas.size > 0 && (
               <p className="text-xs text-slate-400 mt-3">
-                이번 주에 이미 보고한 부위는 목록에서 제외됐어요.
+                이번 주에 이미 보고한 부위는 다시 선택할 수 없어요.
               </p>
             )}
             <NextButton enabled={draft.bodyArea !== null} onClick={finishClassification} />
@@ -549,19 +580,24 @@ function OSTRCInner() {
               질병 증상군의 범주
             </div>
             <div className="flex flex-col gap-2">
-              {OSTRC_ILLNESS_CATEGORIES.filter((cat) => !usedIllnessCats.has(cat.label)).map((cat) => (
-                <OptionCard
-                  key={cat.label}
-                  label={cat.label}
-                  description={cat.description}
-                  selected={draft.illnessCategory === cat.label}
-                  onClick={() => patch({ illnessCategory: cat.label })}
-                />
-              ))}
+              {OSTRC_ILLNESS_CATEGORIES.map((cat) => {
+                const done = usedIllnessCats.has(cat.label);
+                return (
+                  <OptionCard
+                    key={cat.label}
+                    label={cat.label}
+                    description={cat.description}
+                    selected={draft.illnessCategory === cat.label}
+                    disabled={done}
+                    badge={done ? "이번 주 완료" : undefined}
+                    onClick={() => patch({ illnessCategory: cat.label })}
+                  />
+                );
+              })}
             </div>
             {usedIllnessCats.size > 0 && (
               <p className="text-xs text-slate-400 mt-3">
-                이번 주에 이미 보고한 증상군은 목록에서 제외됐어요.
+                이번 주에 이미 보고한 증상군은 다시 선택할 수 없어요.
               </p>
             )}
             <NextButton enabled={draft.illnessCategory !== null} onClick={finishClassification} />
