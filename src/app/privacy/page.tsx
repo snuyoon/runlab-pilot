@@ -10,7 +10,7 @@ export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-12 text-slate-800 leading-relaxed">
       <h1 className="text-2xl font-bold mb-2">RunLab 개인정보 처리방침</h1>
-      <p className="text-sm text-slate-500 mb-8">시행일: 2026년 7월 3일</p>
+      <p className="text-sm text-slate-500 mb-8">시행일: 2026년 7월 4일</p>
 
       <p className="mb-6">
         RunLab(이하 &ldquo;앱&rdquo;)은 러닝 연구를 위한 파일럿 앱으로, 연구 참여자의 응답
@@ -24,6 +24,8 @@ export default function PrivacyPage() {
           <li>러닝 세션 강도(RPE)와 메모</li>
           <li>주간 건강 설문(OSTRC): 부상·질병·정신건강 관련 자가보고 응답</li>
           <li>수면 로그: 취침·기상(알람 해제) 시각</li>
+          <li>러닝 기록: (연동 시) Apple 건강 앱을 통한 러닝 거리·페이스·심박</li>
+          <li>신체 정보: 성별·나이·체중 등 연구에 필요한 기초 정보</li>
         </ul>
         <p className="mt-3">
           앱은 이름·전화번호·이메일 등 직접적인 신원 정보를 수집하지 않으며, 참여자는 연구팀이
@@ -33,8 +35,9 @@ export default function PrivacyPage() {
 
       <Section title="2. 이용 목적">
         <p>
-          수집된 정보는 <strong>러닝 부상 예방 및 컨디션 모니터링 연구</strong> 목적으로만
-          이용됩니다. 광고, 마케팅, 프로파일링, 자동화된 의사결정에 사용하지 않습니다.
+          수집된 정보는 <strong>운동 중 무채혈 연속혈당기 기반 에너지 소모량 분석 연구</strong>
+          (KAIST 생명윤리심의위원회 승인, 승인번호 KH2023-250) 목적으로만 이용됩니다. 광고,
+          마케팅, 프로파일링, 자동화된 의사결정에 사용하지 않습니다.
         </p>
       </Section>
 
@@ -48,16 +51,16 @@ export default function PrivacyPage() {
 
       <Section title="4. 제3자 제공">
         <p>
-          법령에 의한 경우를 제외하고 수집한 정보를 제3자에게 판매·제공하지 않으며, 광고
-          네트워크나 추적(트래킹) 목적의 제3자와 공유하지 않습니다.
+          수집한 정보를 타 연구자에게 임의로 제공하지 않으며, 제공이 필요한 경우 익명화 후 KAIST
+          생명윤리심의위원회의 별도 심의를 거칩니다. 법령에 의한 경우를 제외하고 제3자에게
+          판매·제공하지 않으며, 광고 네트워크나 추적(트래킹) 목적의 제3자와 공유하지 않습니다.
         </p>
       </Section>
 
       <Section title="5. 보관 기간 및 파기">
         <p>
-          데이터는 연구 종료 및 분석에 필요한 기간 동안 보관 후 파기하거나 익명화합니다.
-          참여자는 언제든지 참여를 중단할 수 있으며, 요청 시 본인의 데이터 삭제를 요청할 수
-          있습니다.
+          데이터는 연구 종료 후 3년간 보관한 뒤 파기(파쇄 및 데이터 삭제)합니다. 참여자는
+          언제든지 참여를 중단할 수 있으며, 요청 시 본인의 데이터 삭제를 요청할 수 있습니다.
         </p>
       </Section>
 
@@ -70,10 +73,14 @@ export default function PrivacyPage() {
 
       <Section title="7. 문의처">
         <p>
-          연구 책임: 서울대학교 · 이메일{" "}
-          <a href="mailto:snuyoon@snu.ac.kr" className="text-indigo-600 underline">
-            snuyoon@snu.ac.kr
+          연구책임자: 박수경 교수(KAIST 기계공학과) · 이메일{" "}
+          <a href="mailto:sukyungp@kaist.ac.kr" className="text-indigo-600 underline">
+            sukyungp@kaist.ac.kr
           </a>
+        </p>
+        <p className="mt-1">담당 연구자: 박근아 · ☎ 042-350-3271</p>
+        <p className="mt-1">
+          KAIST 생명윤리심의위원회(IRB) 행정간사 · ☎ 042-350-2189 (승인번호 KH2023-250)
         </p>
       </Section>
 
