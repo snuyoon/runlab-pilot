@@ -184,7 +184,7 @@
 				CODE_SIGN_ENTITLEMENTS = RunLab/RunLab.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = C9UCX4Z9RZ;
 				INFOPLIST_FILE = RunLab/Info.plist;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
@@ -193,7 +193,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.snuyoon.runlab;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -327,7 +327,7 @@
 				CODE_SIGN_ENTITLEMENTS = RunLab/RunLab.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = C9UCX4Z9RZ;
 				INFOPLIST_FILE = RunLab/Info.plist;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
@@ -336,7 +336,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.snuyoon.runlab;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
