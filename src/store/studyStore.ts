@@ -49,6 +49,7 @@ export interface StudySettings {
   participantCode: string; // 연구 참여 코드 (예: SNU-01-8XKQ)
   participantLabel: string; // 서버에 등록된 참여자 라벨 (오입력 확인용)
   enrolledAt: string; // 최초 로그인 시각 (ISO)
+  consentAt: string; // 앱 내 연구 참여 동의 시각 (ISO) — 빈 문자열이면 미동의 (App Store 5.1.3(iv))
   lastResetAck: string; // 마지막으로 반영한 서버 원격 초기화 시각 (reset_at)
   alarms: AlarmItem[]; // 알람 목록 (기본 시계 앱 방식)
   // 하위 호환 — 예전 단일 알람 필드 (마이그레이션용, sleep/ema에서 대표 기상 알람 참조)
@@ -251,6 +252,7 @@ function makeDefaultData(): StudyData {
       participantCode: "",
       participantLabel: "",
       enrolledAt: "",
+      consentAt: "",
       lastResetAck: "",
       alarms: defaultAlarms(),
       alarmHour: 7,

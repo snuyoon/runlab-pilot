@@ -42,9 +42,12 @@ function HomeInner() {
   const [data] = useState(() => loadData());
 
   const loggedIn = data.settings.participantCode !== "";
+  // 로그인했지만 아직 연구 참여 동의를 안 했으면 동의 화면 먼저 (딥링크/기존 설치 대응)
+  const needsConsent = loggedIn && !data.settings.consentAt;
   useEffect(() => {
     if (!loggedIn) router.replace("/");
-  }, [loggedIn, router]);
+    else if (needsConsent) router.replace("/consent");
+  }, [loggedIn, needsConsent, router]);
 
   // 미전송 응답을 서버로 전송 (앱 진입 시 + 네트워크 복구 시)
   useEffect(() => {

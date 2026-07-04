@@ -24,11 +24,16 @@ export default function LoginPage() {
 function LoginInner() {
   const router = useRouter();
   // 이미 로그인돼 있으면 로그인 폼을 건너뛰고 홈으로 (알람이 앱을 켰을 때
-  // 매번 재로그인하던 문제 해결). 네이티브 셸이 /ema 등으로 딥링크하면 그쪽이 우선.
-  const [loggedIn] = useState(() => loadData().settings.participantCode !== "");
+  // 매번 재로그인하던 문제 해결). 단 아직 연구 참여 동의를 안 했으면 동의 화면 먼저.
+  // 네이티브 셸이 /ema 등으로 딥링크하면 그쪽이 우선.
+  const [entry] = useState<string | null>(() => {
+    const s = loadData().settings;
+    if (s.participantCode === "") return null; // 미로그인
+    return s.consentAt ? "/home" : "/consent";
+  });
   useEffect(() => {
-    if (loggedIn) router.replace("/home");
-  }, [loggedIn, router]);
+    if (entry) router.replace(entry);
+  }, [entry, router]);
 
   const [code, setCode] = useState("");
   const [shaking, setShaking] = useState(false);
@@ -77,10 +82,13 @@ function LoginInner() {
       if (isNativeApp()) {
         nativeSetParticipant(normalized);
       }
+      // 코드가 바뀌면(기기 공유/다른 참여자) 이전 참여자의 동의를 물려받지 않도록 초기화
+      const carriedConsent = codeChanged ? "" : current.consentAt || "";
       saveSettings({
         participantCode: normalized,
         participantLabel: typeof json.label === "string" ? json.label : "",
         enrolledAt: codeChanged ? new Date().toISOString() : current.enrolledAt || new Date().toISOString(),
+        consentAt: carriedConsent,
         lastResetAck: serverResetAt,
       });
       // 초기 알람 동기화 — 기본 기상 알람(07:00)까지 시스템 알람으로 등록
@@ -88,7 +96,8 @@ function LoginInner() {
       if (isNativeApp()) {
         nativeSyncAlarms(getAlarms());
       }
-      router.push("/home");
+      // 아직 동의 전이면 연구 참여 동의 화면으로, 이미 동의했으면 홈으로
+      router.push(carriedConsent ? "/home" : "/consent");
     } catch {
       fail("네트워크 연결을 확인한 뒤 다시 시도해주세요.");
     } finally {
@@ -96,8 +105,8 @@ function LoginInner() {
     }
   };
 
-  if (loggedIn) {
-    // 홈으로 이동 중 — 폼 깜빡임 방지
+  if (entry) {
+    // 홈/동의 화면으로 이동 중 — 폼 깜빡임 방지
     return <div className="mobile-frame bg-gradient-to-b from-emerald-50 to-sky-50" />;
   }
 
