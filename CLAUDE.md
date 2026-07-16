@@ -2,7 +2,7 @@
 
 # RunLab Pilot — 에이전트 작업 가이드
 
-러닝 연구 파일럿(참여자 ~10명) 앱. **웹앱(Next.js/Vercel) + iOS 네이티브 셸(WKWebView + AlarmKit 알람) + Neon Postgres 백엔드**.
+러닝 연구 파일럿(참여자 ~10명) 앱. **웹앱(Next.js/Vercel) + iOS 네이티브 셸(WKWebView + AlarmKit 알람) + Android 네이티브 셸(WebView + AlarmManager + Health Connect) + Neon Postgres 백엔드**.
 새 세션은 이 파일 → [docs/DEVLOG.md](docs/DEVLOG.md)(현황·의사결정) → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)(구조) 순으로 읽을 것.
 
 ## 핵심 링크
@@ -26,6 +26,11 @@ node scripts/add-participants.mjs [N] [접두사]  # 참여 코드 발급
 cd ios && xcodegen generate      # project.yml 변경 시 재생성
 xcodebuild -project ios/RunLab.xcodeproj -scheme RunLab -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+
+# Android (JDK17 + SDK 36 / build-tools 36 설치됨. AGP 8.9.1 · Gradle 8.11.1 래퍼 · Kotlin 2.0.21)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17   # 시스템 java(26)가 아니라 JDK17 사용 필수
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+cd android && ./gradlew assembleDebug            # → app/build/outputs/apk/debug/app-debug.apk
 ```
 
 `.env.local`(git 제외)에 `DATABASE_URL`(Neon), `ADMIN_KEY`. Vercel 환경변수에도 동일 키 설정돼 있음. **비밀값을 저장소/문서에 쓰지 말 것.**
@@ -57,3 +62,4 @@ xcodebuild -project ios/RunLab.xcodeproj -scheme RunLab -sdk iphonesimulator \
 - [docs/OPERATIONS.md](docs/OPERATIONS.md) — 연구자 운영 가이드 (참여자 관리, 원격 초기화, 경고 패널 기준, TestFlight 배포)
 - [docs/파일럿테스트_체크리스트.md](docs/파일럿테스트_체크리스트.md) — 실기기 검수 절차
 - [ios/README-iOS.md](ios/README-iOS.md) — iOS 빌드/서명/배포
+- [android/README-Android.md](android/README-Android.md) — Android 빌드/구조/Play 배포(내부 테스트)·리스크

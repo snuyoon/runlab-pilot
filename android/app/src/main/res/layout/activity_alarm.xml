@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#111827"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/alarm_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="기상 알람 — RunLab"
+        android:textColor="#A5B4FC"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/alarm_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="07:00"
+        android:textColor="#FFFFFF"
+        android:textSize="72sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-light"
+        android:layout_marginBottom="48dp" />
+
+    <Button
+        android:id="@+id/alarm_dismiss"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="끄고 기상 설문 시작"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:paddingTop="18dp"
+        android:paddingBottom="18dp"
+        android:background="#6366F1" />
+
+</LinearLayout>

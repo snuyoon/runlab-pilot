@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 웹뷰 셸 기본 테마 -->
+    <style name="Theme.RunLab" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/shell_bg</item>
+        <item name="android:statusBarColor">@color/shell_bg</item>
+        <item name="android:navigationBarColor">@color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <!-- 전체화면 알람 테마 (잠금화면 위) -->
+    <style name="Theme.RunLab.Alarm" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#111827</item>
+        <item name="android:statusBarColor">#111827</item>
+        <item name="android:navigationBarColor">#111827</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+</resources>

@@ -122,6 +122,35 @@ AlarmKit 핵심 사실 (Apple 공식 문서로 검증):
 
 딥링크 수명주기: 인텐트 perform → UserDefaults 기록 + `WebRouter.open("/ema")` → (실행 중) updateUIView가 로드 후 **양쪽 키 즉시 소비** / (콜드 런치) makeUIView가 시작 URL로 사용 후 소비. `lastHandledPath`는 처리 직후 async 리셋 — 잠금 금지(다음 딥링크 무시됨).
 
+## Android 앱 (android/)
+
+Gradle(Kotlin DSL) + View 기반. Package/`applicationId` `com.snuyoon.runlab`(iOS 번들과 동일). **AGP 8.9.1 · Gradle 8.11.1(래퍼) · Kotlin 2.0.21 · compileSdk 36 · targetSdk 35 · minSdk 26 · JDK 17. `assembleDebug` 빌드 성공(app-debug.apk 5.3MB) 검증 완료.** iOS 셸과 동일한 웹/백엔드/브리지 프로토콜 재사용.
+
+| 파일 | 역할 |
+|---|---|
+| `MainActivity.kt` | WebView 셸: domStorage 영속, UA 접미사 `RunLabNative/1.0`, 외부링크→브라우저, 당겨서 새로고침, 딥링크(`EXTRA_PATH`), **브리지 디스패치**(`onBridgeMessage`, 메인스레드), Health Connect 권한/조회, 런타임 권한. `evalJs`는 U+2028/2029 이스케이프 후 메인스레드 `evaluateJavascript`. |
+| `bridge/WebAppInterface.kt` | `addJavascriptInterface(_, "RunLabAndroid")` — 웹의 `window.RunLabAndroid.postMessage(jsonString)` 수신(바인더 스레드 → host가 메인으로 마샬링). |
+| `alarm/AlarmScheduler.kt` | `setAlarmClock()`(Doze 관통·정확) 예약. 1회성이라 발화 시 다음 회차 재예약. **`rescheduleIfActive`는 저장소 기준으로만 재예약**(인플라이트 삭제 레이스의 유령 알람 방지). 요청코드=20000+활성목록 인덱스. |
+| `alarm/AlarmReceiver.kt` | 발화 수신→wakelock→전체화면 알림→`rescheduleIfActive`. `directBootAware`. |
+| `alarm/AlarmNotifier.kt` | `IMPORTANCE_HIGH`+`CATEGORY_ALARM` 알림 `setFullScreenIntent`→잠금화면 `AlarmActivity` 자동 실행(채널 무음, 소리·진동은 액티비티). |
+| `alarm/AlarmActivity.kt` | `showWhenLocked`/`turnScreenOn`, USAGE_ALARM 소리 반복·진동 3단, '끄기'→(기상)키가드 해제 요청 후 앱 열어 `/ema`. `directBootAware`. |
+| `alarm/BootReceiver.kt` | 재부팅/업데이트 후 재예약. `directBootAware`(BOOT/LOCKED_BOOT/MY_PACKAGE_REPLACED). |
+| `alarm/AlarmStore.kt` | specs·요청코드·진단을 **기기암호화(Device Protected) SharedPreferences**에 저장(잠금 해제 전 읽어 재부팅 복원). |
+| `health/HealthConnectManager.kt` | `connect-client:1.1.0`. `getSdkStatus`→권한(ExerciseSession/Distance/HeartRate READ)→`ExerciseSessionRecord`(RUNNING, **가민 writer 한정** `dataOriginFilter`)+`DISTANCE_TOTAL`·`BPM_AVG` 집계 → `NativeWorkout`(source `healthconnect`). |
+
+**러닝 중복 방지**: 한 번의 러닝을 여러 소스(가민·애플워치·타 앱)가 각각 기록해 UUID만 다른 중복이 생길 수 있음. ① Android: Health Connect 읽기를 가민 Connect 패키지(`com.garmin.android.apps.connectmobile`)로 `dataOriginFilter` + 방어적 재확인. ② 공통(웹): `addWorkoutSession`이 UUID 중복 외에 **시간 구간 겹침**도 중복으로 보고 건너뜀(러닝은 동시 불가) — 라이브 iOS 앱은 이 웹 로직으로 재심사 없이 즉시 교정됨. (수면 데이터 수집은 미구현 — 파일럿 범위 밖.)
+
+알람 신뢰성(삼성): `setAlarmClock`은 Doze 관통이나 삼성 "앱 절전"이 최상위 killer(공개 API 없음→사용자 안내만). `maybeShowReliabilityGuide`가 알림/전체화면 권한·삼성 절전/배터리 설정을 한 화면으로 안내(삼성 1회+알림 미승인 시 반복). 배터리는 `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` **딥링크만**(직접 프롬프트는 Play 위반). BootReceiver는 `QUICKBOOT_POWERON`도 수신. **웹(PWA)은 백그라운드 알람 원천 불가** — 네이티브 앱 필수.
+
+브리지 대칭성: `src/lib/native.ts`가 `window.RunLabAndroid`(Android, JSON 문자열) 또는 `window.webkit.messageHandlers.runlab`(iOS, 객체)를 감지해 동일 메시지 전송. 콜백(`__runlabAlarmResult`/`__runlabWorkout`)은 공통.
+
+Android 핵심 사실 (2024–2025 문서 검증):
+- `setAlarmClock()`은 **더 이상 정확알람 권한 면제 아님** → `USE_EXACT_ALARM`(설치 자동승인·해지불가) 필수.
+- 백그라운드 리시버 액티비티 직접 실행 금지 → **full-screen intent 알림**이 잠금화면 알람 정석. 권한 3종: `USE_EXACT_ALARM`+`USE_FULL_SCREEN_INTENT`+`POST_NOTIFICATIONS`(API33+ 미승인 시 FSI 무발화).
+- Health Connect 1.1.0은 **compileSdk 36 + AGP 8.9.1+** 요구.
+- 배포: Google Play **내부 테스트**(≤100명, 즉시, 12명·14일 요건 우회), 등록비 1회 $25. 데이터 안전 + 건강앱 선언(인간대상연구) + `/privacy` URL.
+- ⚠️ **미검증**: 실기기 알람 발화·소리·진동, OEM 배터리 최적화 누락, Garmin→Health Connect 유입(빌드=APK 산출까지 검증).
+
 ## 검증 이력
 
 - 웹: Claude preview에서 전 플로우 E2E (OSTRC 게이트키퍼 3경로·초안 복원·반복 연결, EMA/RPE 하루 1회 가드, 계정 전환 초기화, 원격 초기화, 관리자 패널 3종).

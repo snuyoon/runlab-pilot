@@ -463,6 +463,18 @@ export function addSessionRPE(entry: Omit<SessionRPE, "id" | "completedAt">) {
 export function addWorkoutSession(entry: Omit<WorkoutSession, "completedAt">): boolean {
   const data = loadData();
   if (!entry.id || data.workouts.some((w) => w.id === entry.id)) return false;
+  // 중복 방지: 같은 러닝을 여러 소스(가민·애플워치·타 앱)가 각각 기록해 UUID만 다른 경우.
+  // 러닝은 동시에 둘일 수 없으므로 시간 구간이 겹치면 같은 세션으로 보고 건너뛴다(먼저 온 것 유지).
+  const start = Date.parse(entry.startAt);
+  const end = Date.parse(entry.endAt);
+  if (!Number.isNaN(start) && !Number.isNaN(end)) {
+    const overlaps = data.workouts.some((w) => {
+      const ws = Date.parse(w.startAt);
+      const we = Date.parse(w.endAt);
+      return !Number.isNaN(ws) && !Number.isNaN(we) && start < we && end > ws;
+    });
+    if (overlaps) return false;
+  }
   const record: WorkoutSession = { ...entry, completedAt: new Date().toISOString() };
   data.workouts.push(record);
   enqueue(data, {
@@ -492,6 +504,7 @@ export function workoutForDate(date: string, data: StudyData = loadData()): Work
   if (same.length === 0) return null;
   return same.sort((a, b) => (a.startAt < b.startAt ? 1 : -1))[0];
 }
+
 
 /** 세션 부하 AU = sRPE(0~10) × 세션 시간(분). (Foster session-RPE) */
 export function sessionAU(rpe: number, durationSec: number): number {
